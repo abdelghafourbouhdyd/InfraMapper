@@ -79,8 +79,26 @@ SOURCES = [
     ("silentpush", "Silent Push", "https://www.silentpush.com/feed/"),
     ("infoblox", "Infoblox Threat Intel", "https://www.infoblox.com/blog/category/threat-intelligence/feed/"),
     ("sucuri", "Sucuri", "https://blog.sucuri.net/feed/"),
-    ("ncsc-uk", "NCSC UK", "https://www.ncsc.gov.uk/api/1/services/v1/report-rss-feed.xml"),
+    ("rapid7", "Rapid7 Labs", "https://www.rapid7.com/blog/rss/"),
+    ("crowdstrike", "CrowdStrike", "https://www.crowdstrike.com/en-us/blog/feed"),
+    ("arcticwolf", "Arctic Wolf Labs", "https://arcticwolf.com/feed/"),
+    ("group-ib", "Group-IB", "https://www.group-ib.com/feed/blogfeed/"),
+    ("asec", "AhnLab ASEC", "https://asec.ahnlab.com/en/feed/"),
+    ("s2w", "S2W", "https://medium.com/feed/s2wblog"),
+    ("cloudsek", "CloudSEK", "https://www.cloudsek.com/blog/rss.xml"),
+    ("threatfabric", "ThreatFabric", "https://www.threatfabric.com/blogs/rss.xml"),
+    ("cofense", "Cofense", "https://cofense.com/feed/"),
+    ("nviso", "NVISO Labs", "https://blog.nviso.eu/feed/"),
+    ("fox-it", "Fox-IT", "https://blog.fox-it.com/feed/"),
+    ("objective-see", "Objective-See", "https://objective-see.org/rss.xml"),
+    ("cisa", "CISA advisories", "https://www.cisa.gov/cybersecurity-advisories/all.xml"),
+    ("jpcert", "JPCERT/CC", "https://blogs.jpcert.or.jp/en/atom.xml"),
+    ("cert-pl", "CERT Polska", "https://cert.pl/en/rss.xml"),
+    ("cert-fr", "CERT-FR (ANSSI)", "https://www.cert.ssi.gouv.fr/cti/feed/"),
+    ("cert-agid", "CERT-AGID", "https://cert-agid.gov.it/feed/"),
+    ("ncsc-uk", "NCSC UK", "https://www.ncsc.gov.uk/api/1/services/v1/all-rss-feed.xml"),
 ]
+MAX_FEED_PAGES = 5        # ?paged=N pages read back per feed (WordPress: 10 posts a page)
 UA = {"User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36"}
 # some feed hosts (FeedBurner-style) serve an HTML page to browsers and XML to feed readers
 FEED_HEADERS = {"User-Agent": "Mozilla/5.0 (compatible; InfraMapper feed reader)",
@@ -370,14 +388,16 @@ class Ingestor:
         self.pages.set(f"article:{item['url']}", {"text": text, "links": sorted(links)})
         return text, links
 
-    def source(self, slug: str, name: str, feed: str, known: set[str]) -> list[dict]:
-        # some hosts only serve XML to feed readers (FortiGuard), others only to browsers (Sekoia);
-        # anything else (a challenge page, a timeout) gets one slower retry
+    def _feed(self, url: str, timeout: int = 30) -> str | None:
+        # some hosts only serve XML to feed readers (FortiGuard), others only to browsers (Sekoia)
         is_xml = lambda t: bool(t) and t.lstrip()[:200].lstrip("\ufeff").startswith(("<?xml", "<rss", "<feed"))
-        xml = next((t for h in (FEED_HEADERS, UA) if is_xml(t := self._get(feed, headers=h))), None)
-        if not xml:
+        return next((t for h in (FEED_HEADERS, UA) if is_xml(t := self._get(url, timeout=timeout, headers=h))), None)
+
+    def source(self, slug: str, name: str, feed: str, known: set[str]) -> list[dict]:
+        xml = self._feed(feed)
+        if not xml:   # a challenge page, a timeout: one slower retry
             time.sleep(5)
-            xml = next((t for h in (FEED_HEADERS, UA) if is_xml(t := self._get(feed, timeout=60, headers=h))), None)
+            xml = self._feed(feed, timeout=60)
         if not xml:
             log.warning(f"{name}: feed unavailable")
             return []
@@ -387,6 +407,21 @@ class Ingestor:
             log.warning(f"{name}: bad feed ({exc})")
             return []
         cutoff = time.time() - self.days * 86400
+        # WordPress feeds hold only the last 10 posts: page back (?paged=N) until the window is covered;
+        # a feed without pages answers with the same items (or an error), which stops it
+        for page in range(2, MAX_FEED_PAGES + 1):
+            dated = [i["published"] for i in items if i["published"]]
+            if not dated or min(dated) < cutoff:
+                break
+            more = self._feed(feed + ("&" if "?" in feed else "?") + f"paged={page}")
+            try:
+                new = [i for i in parse_feed(more.encode())
+                       if i["url"] not in {x["url"] for x in items}] if more else []
+            except ET.ParseError:
+                new = []
+            if not new:
+                break
+            items += new
         todo = [i for i in items if (i["published"] or 0) >= cutoff and i["url"] not in known]
         if not todo:
             log.info(f"{name}: nothing new")
@@ -447,7 +482,7 @@ class Ingestor:
                 log.warning(f"{src[1]}: failed ({type(exc).__name__}: {exc})")
                 return []
 
-        with ThreadPoolExecutor(max_workers=8) as pool:   # sites in parallel, each site sequential
+        with ThreadPoolExecutor(max_workers=12) as pool:   # sites in parallel, each site sequential
             done = [r for rs in pool.map(one, todo) for r in rs]
         self.write_bundle()
         return done

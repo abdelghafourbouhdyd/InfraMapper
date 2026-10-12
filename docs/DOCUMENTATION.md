@@ -734,10 +734,12 @@ Only `P1` / `P2` / `P3` and `lead-strong` / `lead-medium` are exported.
 
 ## 16. Threat report dataset (`--ingest`)
 
-Pulls recent research from 33 sources (The DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET,
+Pulls recent research from 50 sources (The DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET,
 Securelist, Check Point, Proofpoint, SentinelLabs, Sekoia, Elastic, Zscaler, Huntress, Red Canary,
 Volexity, FortiGuard, ANY.RUN, Recorded Future, EclecticIQ, Trend Micro, Darktrace, Malwarebytes,
-Bitdefender, G DATA, Cyble, Seqrite, Qualys, Censys, Silent Push, Infoblox, Sucuri, NCSC UK) into
+Bitdefender, G DATA, Cyble, Seqrite, Qualys, Censys, Silent Push, Infoblox, Sucuri, Rapid7,
+CrowdStrike, Arctic Wolf, Group-IB, AhnLab ASEC, S2W, CloudSEK, ThreatFabric, Cofense, NVISO, Fox-IT,
+Objective-See, CISA, JPCERT/CC, CERT Polska, CERT-FR, CERT-AGID, NCSC UK) into
 `dataset/` as STIX, and indexes it in the knowledge base. **Every investigation checks its IOCs against
 it**: a hit is a Report node and counts as prior reporting (`P2`).
 

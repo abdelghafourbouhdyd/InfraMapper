@@ -114,7 +114,7 @@ Each case goes to `cases/<timestamp>_<seed>/`:
 
 ## Threat report dataset (optional)
 
-Builds a local STIX dataset from 33 research sources (DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET...).
+Builds a local STIX dataset from 50 research sources (DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET...).
 Investigations check their IOCs against it.
 
 ```bash
