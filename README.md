@@ -123,8 +123,6 @@ Investigations check their IOCs against it.
 .venv/bin/python ioc_investigator.py --search-reports Lumma
 ```
 
-![Threat reports](docs/screenshots/reports.png)
-
 ## Tests
 
 ```bash
