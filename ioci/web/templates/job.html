@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  #log { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: .8rem; height: calc(100vh - 300px); min-height: 360px;
+         overflow: auto; font-family: var(--mono); font-size: .72rem; line-height: 1.5; white-space: pre-wrap; word-break: break-all; color: var(--text); margin: 0; }
+  #log .w { color: var(--warning); } #log .e { color: var(--danger); } #log .ok { color: var(--success); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div style="min-width:0">
+    <div class="small-muted mb-1"><a href="/jobs">Jobs</a> / <span class="mono">{{ jid }}</span></div>
+    <h1 class="page-title wrap-any" id="title">Job</h1>
+    <div class="page-subtitle" id="sub"></div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm btn-primary" id="open-case" style="display:none"><i class="bi bi-folder2-open me-1"></i>Open case</a>
+    <button class="btn btn-sm btn-outline-danger" id="cancel" style="display:none">Cancel</button>
+  </div>
+</div>
+<div id="state-note"></div>
+<div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-terminal"></i>Live output</h2>
+  <label class="small ms-auto"><input type="checkbox" class="form-check-input" id="follow" checked> follow</label></div>
+  <div class="panel-body"><pre id="log"></pre></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const JID = {{ jid|tojson }};
+  const {esc} = IO;
+  const cls = l => /\b(error|failed|traceback)\b/i.test(l) ? 'e' : /\bwarn(ing)?\b|quota|rate limit/i.test(l) ? 'w' : /\bdone\b/i.test(l) ? 'ok' : '';
+  async function load() {
+    let j;
+    try { j = await IO.get(`/api/jobs/${JID}?tail=2000`); } catch (e) { return IO.err(e); }
+    document.getElementById('title').innerHTML = `${IO.jobState(j.state)} <span class="mono">${esc(j.label)}</span>`;
+    document.getElementById('sub').textContent = `${j.kind} · created ${IO.fmt(j.created)}${j.started ? ' · started ' + IO.fmt(j.started) : ''}${j.finished ? ' · finished ' + IO.fmt(j.finished) : ''}`;
+    const log = document.getElementById('log');
+    log.innerHTML = j.log.map(l => `<span class="${cls(l)}">${esc(l)}</span>`).join('\n') || (j.state === 'queued' ? 'Waiting for the previous job to finish…' : '');
+    if (document.getElementById('follow').checked) log.scrollTop = log.scrollHeight;
+    const oc = document.getElementById('open-case');
+    if (j.case) { oc.style.display = ''; oc.href = '/cases/' + encodeURIComponent(j.case); }
+    document.getElementById('cancel').style.display = (j.state === 'running' || j.state === 'queued') ? '' : 'none';
+    document.getElementById('state-note').innerHTML = j.state === 'done' && j.case ? `<div class="note-box mb-3">Finished. <a href="/cases/${esc(j.case)}">Open the case</a> to see the report, IOCs, graph and hunting queries.</div>`
+      : j.state === 'error' ? `<div class="note-box danger mb-3"><b>Failed:</b> ${esc(j.error || '')}</div>` : '';
+    if (j.state === 'running' || j.state === 'queued') setTimeout(load, 1500);
+  }
+  document.getElementById('cancel').onclick = async () => { if (await IO.confirm('Cancel job', 'Stop this job? A partial case is not saved.')) { await IO.post(`/api/jobs/${JID}/cancel`).catch(IO.err); load(); } };
+  load();
+})();
+</script>
+{% endblock %}

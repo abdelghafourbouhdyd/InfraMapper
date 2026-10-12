@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title"><i class="bi bi-newspaper me-2"></i>Threat reports</h1>
+    <div class="page-subtitle">Published research (DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET…), with the IOCs each one lists, stored as STIX in <code>dataset/</code>. Investigations flag IOCs that already appear in a published report.</div></div>
+</div>
+<div class="grid-main-side">
+  <div>
+    <section data-pane="reports">
+      <div class="panel"><div class="panel-body"><div class="d-flex gap-2">
+        <input class="form-control" id="q" placeholder="Search by IOC, actor, malware family, ATT&CK id (T1566), CVE or title words">
+        <button class="btn btn-primary" id="go">Search</button></div>
+        <div class="small-muted mt-1" id="stats"></div></div></div>
+      <div id="rows"></div>
+    </section>
+  </div>
+  <div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-cloud-download"></i>Ingest vendor reports</h2></div><div class="panel-body">
+      <label class="form-label small-muted">How far back (days)</label>
+      <input class="form-control form-control-sm mb-2" type="number" id="days" value="60" min="1" max="365">
+      <label class="form-label small-muted">Sources (none selected = all)</label>
+      <select class="form-select form-select-sm mb-2" id="sources" multiple size="8"></select>
+      <label class="small d-block"><input type="checkbox" class="form-check-input" id="ai"> Enrich with Claude Code (<code>claude -p</code>): TTPs from prose, actors, IOC roles</label>
+      <label class="small d-block mb-2"><input type="checkbox" class="form-check-input" id="reingest"> Re-analyse reports already ingested</label>
+      <button class="btn btn-sm btn-primary w-100" id="ingest"><i class="bi bi-play-fill me-1"></i>Start ingestion</button>
+    </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-bar-chart"></i>By source</h2></div><div class="panel-body" id="by"></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO;
+  function iocList(iocs) {
+    const by = {};
+    iocs.forEach(i => (by[i.type] = by[i.type] || []).push(i));
+    return Object.entries(by).map(([t, xs]) => `<div class="small mt-1"><b>${esc(t)}</b> <span class="small-muted">(${xs.length})</span>
+      <button class="btn btn-xs btn-outline-secondary ms-1" data-copyall="${esc(xs.map(x => x.value).join('\n'))}" title="Copy"><i class="bi bi-clipboard"></i></button>
+      <div class="mono small wrap-any">${xs.map(x => `<a href="#" data-inv="${esc(x.value)}" title="Investigate">${esc(x.value)}</a>${x.role ? ` <span class="small-muted">(${esc(x.role)})</span>` : ''}`).join('<br>')}</div></div>`).join('')
+      || '<div class="small-muted small mt-1">No IOC stored.</div>';
+  }
+  function wire(el) {
+    el.querySelectorAll('[data-copyall]').forEach(b => b.onclick = () => IO.copy(b.dataset.copyall));
+    el.querySelectorAll('[data-inv]').forEach(a => a.onclick = async e => {
+      e.preventDefault();
+      if (await IO.confirm('Investigate', `Start an investigation of ${a.dataset.inv}?`)) IO.quickInvestigate(a.dataset.inv);
+    });
+  }
+
+  async function load(q) {
+    const r = await IO.get('/api/reports?' + IO.params({q: q || '', n: 60})).catch(IO.err);
+    if (!r) return;
+    document.getElementById('stats').textContent = `${IO.num(r.stats.reports)} reports · ${IO.num(r.stats.iocs)} IOCs in the dataset` + (q ? ` · ${r.items.length} match “${q}”` : ' · most recently added');
+    const sel = document.getElementById('sources');
+    if (!sel.options.length) sel.innerHTML = r.sources.map(s => `<option value="${esc(s.slug)}">${esc(s.name)}</option>`).join('');
+    document.getElementById('by').innerHTML = r.stats.by_source.slice(0, 40).map(([s, n]) => `<div class="d-flex justify-content-between small mb-1"><span>${esc(s)}</span><span class="mono">${n}</span></div>`).join('') || '<span class="small-muted">Dataset empty — run an ingestion.</span>';
+    const box = document.getElementById('rows');
+    box.innerHTML = r.items.map(x => `<div class="panel"><div class="panel-body">
+      <div class="d-flex gap-2 align-items-start"><div style="flex:1;min-width:0"><a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.title)}</b> <i class="bi bi-box-arrow-up-right small"></i></a>
+      <div class="small-muted">${x.feed ? `<span class="bpb"><i class="bi bi-rss"></i>${esc(x.feed)}</span> ` : ''}${esc(x.source)} · ${IO.date(x.published)} · ${x.ttps.length} techniques${x.cves.length ? ' · ' + esc(x.cves.slice(0, 4).join(', ')) : ''}</div></div>
+      <button class="btn btn-xs btn-outline-secondary text-nowrap" data-rid="${esc(x.report_id)}"><i class="bi bi-list-ul me-1"></i>${x.n_iocs} IOCs</button></div>
+      ${(x.actors.length || x.families.length) ? `<div class="chip-list mt-2">${[...x.actors, ...x.families].map(a => `<span class="bpb src">${esc(a)}</span>`).join('')}</div>` : ''}
+      ${x.summary ? `<div class="small mt-2">${esc(IO.trunc(x.summary, 500))}</div>` : ''}
+      ${x.ttps.length ? `<div class="small-muted small mt-1 mono">${esc(x.ttps.slice(0, 12).map(t => typeof t === 'object' ? (t.id || JSON.stringify(t)) : t).join(' '))}</div>` : ''}
+      <div data-iocs="${esc(x.report_id)}" style="display:none"></div></div></div>`).join('')
+      || '<div class="empty-state">No reports' + (q ? ' match.' : ' yet — start an ingestion on the right.') + '</div>';
+    box.querySelectorAll('[data-rid]').forEach(b => b.onclick = () => IO.busy(b, async () => {
+      const el = box.querySelector(`[data-iocs="${CSS.escape(b.dataset.rid)}"]`);
+      if (el.style.display === 'none' && !el.innerHTML) {
+        const rep = await IO.get('/api/reports/' + encodeURIComponent(b.dataset.rid));
+        el.innerHTML = `<div class="border-top mt-2 pt-1">${iocList(rep.iocs)}</div>`;
+        wire(el);
+      }
+      el.style.display = el.style.display === 'none' ? '' : 'none';
+    }));
+  }
+
+  document.getElementById('go').onclick = () => load(document.getElementById('q').value.trim());
+  document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') load(e.target.value.trim()); });
+  document.getElementById('ingest').onclick = async () => {
+    try { const j = await IO.post('/api/reports/ingest', {days: +document.getElementById('days').value, ai: document.getElementById('ai').checked,
+      reingest: document.getElementById('reingest').checked, sources: [...document.getElementById('sources').selectedOptions].map(o => o.value)});
+      location.assign('/jobs/' + j.id); } catch (e) { IO.err(e); }
+  };
+  load('');
+})();
+</script>
+{% endblock %}

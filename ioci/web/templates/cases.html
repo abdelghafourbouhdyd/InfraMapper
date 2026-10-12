@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title"><i class="bi bi-folder2-open me-2"></i>Cases</h1>
+    <div class="page-subtitle">Every saved investigation (<code>cases/</code>). Cases made from the command line show up here too.</div></div>
+  <a class="btn btn-sm btn-primary" href="/new"><i class="bi bi-plus-lg me-1"></i>New investigation</a>
+</div>
+<div class="panel"><div class="panel-body"><form class="filters" id="f" onsubmit="return false">
+  <input class="form-control grow" name="q" placeholder="Seed, case name, actor or family…">
+  <select class="form-select" name="type"><option value="">Any seed type</option><option>Domain</option><option>IP</option><option>URL</option><option>File</option><option value="report">Report triage</option></select>
+  <span class="small-muted ms-auto">Looking for an indicator inside cases? Use “Find in cases” on the dashboard.</span>
+</form></div></div>
+<div class="panel"><div class="panel-body flush tbl-wrap"><table class="table table-hover mb-0">
+  <thead><tr><th>Seed</th><th>Attribution</th><th>IOCs by priority</th><th class="text-end">Nodes</th><th class="text-end">Pivots</th><th>Created</th><th>Updated</th></tr></thead>
+  <tbody id="rows"><tr><td colspan="7" class="empty-state">Loading…</td></tr></tbody></table></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO, f = document.getElementById('f');
+  async function load() {
+    const p = Object.fromEntries(new FormData(f));
+    const r = await IO.get('/api/cases?' + IO.params(p)).catch(IO.err);
+    if (!r) return;
+    document.getElementById('rows').innerHTML = r.items.map(c => `<tr onclick="location='/cases/${esc(c.name)}'">
+      <td>${IO.seedBadge(c.seed_type)} <span class="mono">${esc(IO.trunc(c.seed, 70))}</span>${c.seed_vt ? `<span class="sub">VT ${c.seed_vt} detections</span>` : ''}</td>
+      <td class="small">${esc([...c.actors, ...c.families].slice(0, 4).join(', ')) || '<span class="small-muted">—</span>'}</td>
+      <td>${IO.priSummary(c.priorities)}</td>
+      <td class="text-end mono">${c.nodes}</td><td class="text-end mono">${c.pivots + c.manual_pivots}</td>
+      <td class="small">${IO.fmt(c.created)}</td><td>${IO.when(c.updated)}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="empty-state">No case matches.</td></tr>';
+  }
+  let t; f.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+  load();
+})();
+</script>
+{% endblock %}

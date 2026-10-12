@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title"><i class="bi bi-key-fill me-2"></i>API keys &amp; settings</h1>
+    <div class="page-subtitle">Keys live in this project's <code>.env</code> on the server. The browser only ever sees a masked hint (last 4 characters) — never the key. New investigations use a key immediately; reopen a live graph to pick it up.</div></div>
+  <button class="btn btn-sm btn-outline-secondary" id="test-all" data-busy="Testing…"><i class="bi bi-activity me-1"></i>Test all configured</button>
+</div>
+
+<div class="metric-bar mb-3" id="summary"></div>
+
+<div class="grid-main-side">
+  <div class="prov-grid" id="providers">{% for i in range(4) %}<div class="panel prov"><div class="panel-body"><span class="skel mb-2" style="width:40%"></span><span class="skel mb-2"></span><span class="skel" style="width:70%"></span></div></div>{% endfor %}</div>
+  <div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-shield-lock"></i>How keys are handled</h2></div>
+      <div class="panel-body small">
+        <ul class="mb-0 ps-3" style="line-height:1.7">
+          <li>Stored server-side in <code>.env</code> (owner-only permissions on Linux / macOS), never in the browser.</li>
+          <li>Tests run on the server; results keep only a short hash of the key, so a replaced key shows as <i>untested</i>.</li>
+          <li>Error messages are built from status codes and are scrubbed of every configured key.</li>
+          <li>“Test” before saving tries an unsaved key without storing it.</li>
+        </ul>
+      </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-folder"></i>Paths &amp; access</h2></div><div class="panel-body small" id="paths"><span class="skel"></span></div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO;
+  let P = [];
+  const STATE = {valid: ['check-circle-fill', 'valid'], invalid: ['x-octagon-fill', 'invalid key'], error: ['exclamation-triangle-fill', 'error'],
+    rate_limited: ['speedometer', 'quota exhausted'], untested: ['question-circle', 'untested'], keyless: ['unlock', 'keyless mode'],
+    not_configured: ['dash-circle', 'not configured']};
+  const chip = s => { const [ic, l] = STATE[s] || ['circle', s]; return `<span class="kstate ${esc(s)}"><i class="bi bi-${ic}"></i>${esc(l)}</span>`; };
+
+  function quota(q) {
+    if (!q || !q.length) return '';
+    return '<div class="quota">' + q.map(x => {
+      if (x.value != null) return `<div class="q"><span>${esc(x.label)}</span><span class="mono">${IO.num(x.value)}</span></div>`;
+      const pct = x.limit ? Math.min(100, Math.round(100 * (x.used || 0) / x.limit)) : null;
+      const cls = x.remaining === 0 ? 'out' : pct != null && pct >= 80 ? 'low' : '';
+      const txt = x.limit != null ? `${IO.num(x.remaining)} left of ${IO.num(x.limit)}` : x.remaining != null ? `${IO.num(x.remaining)} left` : '—';
+      return `<div class="q ${cls}"><span>${esc(x.label)}</span><span class="mono">${txt}</span>${pct != null ? `<span class="bar" role="meter" aria-valuenow="${pct}" aria-valuemin="0" aria-valuemax="100" aria-label="${esc(x.label)} used"><i style="width:${pct}%"></i></span>` : ''}</div>`;
+    }).join('') + '</div>';
+  }
+
+  function card(p) {
+    const s = p.state || {};
+    const configured = p.fields.some(f => f.set);
+    return `<div class="panel prov" data-p="${esc(p.id)}">
+      <div class="panel-body">
+        <div class="d-flex align-items-start gap-2"><div style="min-width:0"><div class="prov-name">${esc(p.name)}</div><div class="prov-use">${esc(p.used_for)}</div></div><div class="ms-auto">${chip(s.status)}</div></div>
+        ${s.message ? `<div class="note-box ${s.status === 'invalid' || s.status === 'error' ? 'danger' : s.status === 'rate_limited' ? 'warn' : ''}">${esc(s.message)}${s.plan ? ` · plan <b>${esc(s.plan)}</b>` : ''}</div>` : ''}
+        ${quota(s.quota)}
+        ${p.fields.map(f => `<div class="kfield"><div class="kl">${esc(f.label)}<span class="mono">${esc(f.key)}</span></div>
+          ${f.set ? `<span class="mono small">${esc(f.hint)}</span>` : '<span class="small-muted">not set</span>'}
+          ${f.set ? `<button class="btn btn-xs btn-outline-danger" data-rm="${esc(f.key)}" title="Remove ${esc(f.key)} from .env" aria-label="Remove ${esc(f.label)}"><i class="bi bi-trash"></i></button>` : ''}</div>`).join('')}
+      </div>
+      <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0">
+        <span class="panel-meta">${s.checked_at ? 'checked ' + IO.ago(s.checked_at) + (s.latency_ms != null ? ` · ${s.latency_ms} ms` : '') : configured ? 'never tested' : ''}</span>
+        <div class="ms-auto d-flex gap-2">
+          <a class="btn btn-xs btn-outline-secondary" href="${esc(p.docs)}" target="_blank" rel="noopener noreferrer" title="Where to get a key">Get key <i class="bi bi-box-arrow-up-right"></i></a>
+          ${configured ? `<button class="btn btn-xs btn-outline-secondary" data-test="${esc(p.id)}" data-busy="Testing…"><i class="bi bi-activity me-1"></i>Test</button>` : ''}
+          <button class="btn btn-xs btn-primary" data-edit="${esc(p.id)}">${configured ? 'Update' : 'Add key'}</button>
+        </div></div></div>`;
+  }
+
+  function render(r) {
+    P = r.providers;
+    const cnt = k => P.filter(p => p.state.status === k).length;
+    document.getElementById('summary').innerHTML = [
+      ['Valid', cnt('valid'), 'tested and working', 'metric-primary'], ['Need attention', cnt('invalid') + cnt('error') + cnt('rate_limited'), 'invalid, failing or out of quota', ''],
+      ['Untested', cnt('untested'), 'set, never tested', ''], ['Keyless', cnt('keyless'), 'running on the free tier', ''], ['Not configured', cnt('not_configured'), 'source disabled', '']]
+      .map(([l, n, s, c]) => `<div class="metric ${c}"><span class="metric-label">${l}</span><span class="figure ${c ? '' : 'figure-lg'}">${n}</span><span class="metric-sub">${s}</span></div>`).join('');
+    document.getElementById('providers').innerHTML = P.map(card).join('');
+    if (r.cases_dir) document.getElementById('paths').innerHTML = `<dl class="kv"><dt>Cases</dt><dd class="mono wrap-any">${esc(r.cases_dir)}</dd><dt>API cache</dt><dd class="mono wrap-any">${esc(r.cache_dir)}</dd>
+      <dt>Sign-in</dt><dd>${r.auth ? 'password required (IOCI_WEB_PASSWORD)' : 'none — local only (127.0.0.1). Set IOCI_WEB_PASSWORD to share on a network.'}</dd></dl>`;
+    bind();
+  }
+
+  function report(res) {
+    if (!res) return;
+    const name = (P.find(p => p.id === res.provider) || {}).name || res.provider;
+    IO.toast(`${name}: ${res.message}`, res.status === 'valid' ? 'ok' : res.status === 'rate_limited' || res.status === 'keyless' ? 'warn' : 'error');
+  }
+
+  function bind() {
+    document.querySelectorAll('[data-test]').forEach(b => b.onclick = () => IO.busy(b, async () => {
+      try { const r = await IO.post('/api/keys/test', {provider: b.dataset.test}); render(r); report(r.result); } catch (e) { IO.err(e); }
+    }));
+    document.querySelectorAll('[data-rm]').forEach(b => b.onclick = async () => {
+      if (!await IO.confirm('Remove key', `Remove ${b.dataset.rm} from .env? The data source falls back to keyless mode or is disabled.`)) return;
+      try { render(await IO.post('/api/keys/remove', {key: b.dataset.rm})); IO.toast('Removed from .env', 'ok'); } catch (e) { IO.err(e); }
+    });
+    document.querySelectorAll('[data-edit]').forEach(b => b.onclick = () => edit(P.find(p => p.id === b.dataset.edit)));
+  }
+
+  function edit(p) {
+    const body = p.fields.map(f => `<label class="form-label small-muted mb-1" for="k-${esc(f.key)}">${esc(f.label)} <span class="mono">${esc(f.key)}</span></label>
+      <input class="form-control form-control-sm mono mb-1" id="k-${esc(f.key)}" data-k="${esc(f.key)}" type="${f.secret ? 'password' : 'text'}" autocomplete="off" spellcheck="false"
+        placeholder="${f.set ? 'leave empty to keep ' + esc(f.hint) : f.key === 'VT_RPM' ? '4' : ''}">
+      <div class="small-muted mb-3">${esc(f.help)}</div>`).join('') + '<div class="field-err" data-err></div><div data-res></div>';
+    const m = IO.modal(`${p.name} — ${p.fields.some(f => f.set) ? 'update' : 'add'} key`, body, {footer:
+      '<button class="btn btn-sm btn-outline-secondary" data-try data-busy="Testing…"><i class="bi bi-activity me-1"></i>Test without saving</button>' +
+      '<button class="btn btn-sm btn-outline-primary" data-save>Save</button><button class="btn btn-sm btn-primary" data-save-test data-busy="Saving…">Save &amp; test</button>'});
+    const vals = () => Object.fromEntries([...m.el.querySelectorAll('[data-k]')].map(i => [i.dataset.k, i.value.trim()]));
+    const err = t => { m.el.querySelector('[data-err]').textContent = t || ''; };
+    const check = () => {
+      const v = vals();
+      if (!Object.values(v).some(Boolean)) { err('Enter a value first.'); return null; }
+      const bad = Object.entries(v).find(([, x]) => x && (/\s/.test(x) || x.length > 1000));
+      if (bad) { err(`${bad[0]}: keys never contain spaces — check you copied only the key.`); return null; }
+      err(''); return v;
+    };
+    m.el.querySelector('[data-try]').onclick = e => { const v = check(); if (v) IO.busy(e.currentTarget, async () => {
+      try { const r = await IO.post('/api/keys/test', {provider: p.id, values: v}); const x = r.result;
+        m.el.querySelector('[data-res]').innerHTML = `<div class="note-box ${x.status === 'valid' ? '' : 'danger'}">${chip(x.status)} ${esc(x.message)}</div>${quota(x.quota)}`; } catch (ex) { err(ex.message); }
+    }); };
+    const save = (btn, test) => { const v = check(); if (v) IO.busy(btn, async () => {
+      try { const r = await IO.post('/api/keys/save', {provider: p.id, values: v, test}); render(r); m.close(); IO.toast('Saved to .env', 'ok'); report(r.result); } catch (ex) { err(ex.message); }
+    }); };
+    m.el.querySelector('[data-save]').onclick = e => save(e.currentTarget, false);
+    m.el.querySelector('[data-save-test]').onclick = e => save(e.currentTarget, true);
+    setTimeout(() => { const i = m.el.querySelector('[data-k]'); if (i) i.focus(); }, 300);
+  }
+
+  document.getElementById('test-all').onclick = e => IO.busy(e.currentTarget, async () => {
+    const todo = P.filter(p => p.fields.some(f => f.set));
+    if (!todo.length) return IO.toast('No keys configured yet', 'warn');
+    let ok = 0, last;
+    for (const p of todo) {
+      try { last = await IO.post('/api/keys/test', {provider: p.id}); if (last.result.status === 'valid') ok++; render(last); } catch (ex) { IO.err(ex); }
+    }
+    IO.toast(`${ok} of ${todo.length} providers valid`, ok === todo.length ? 'ok' : 'warn');
+  });
+
+  IO.get('/api/keys').then(render).catch(e => { document.getElementById('providers').innerHTML = IO.errorBox(e); });
+})();
+</script>
+{% endblock %}

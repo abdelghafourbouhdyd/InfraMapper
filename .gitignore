@@ -1,0 +1,16 @@
+# secrets
+.env
+
+# local data: caches, investigations, logs, generated dataset
+.cache/
+cases/
+logs/
+dataset/*
+!dataset/.gitkeep
+
+# python
+.venv/
+.venv-*/
+__pycache__/
+*.pyc
+.pytest_cache/

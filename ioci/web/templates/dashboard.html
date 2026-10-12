@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="bi bi-grid-1x2-fill me-2"></i>InfraMapper</h1>
+    <div class="page-subtitle">Pivot a hash, IP, domain or URL through VirusTotal, urlscan.io and passive DNS — or triage every IOC in a threat report.</div>
+  </div>
+  <a class="btn btn-sm btn-primary" href="/new"><i class="bi bi-plus-lg me-1"></i>New investigation</a>
+</div>
+
+<div class="panel">
+  <div class="panel-body">
+    <div class="d-flex gap-2 flex-wrap">
+      <input class="form-control mono" id="quick" style="flex:1 1 320px" placeholder="evil-login-01[.]pages.dev · 45.9.148.12 · sha256 · https://…" autofocus>
+      <button class="btn btn-primary" id="go"><i class="bi bi-search me-1"></i>Investigate</button>
+      <button class="btn btn-outline-secondary" id="find" title="Look the indicator up in existing cases and verdicts first"><i class="bi bi-folder2-open me-1"></i>Find in cases</button>
+    </div>
+    <div class="small-muted mt-2">Defanged input is fine. Several IOCs or a whole report? Use <a href="/new">New investigation</a>.</div>
+    <div id="find-out" class="mt-2"></div>
+  </div>
+</div>
+
+<div class="metric-bar mb-3">
+  <a class="metric metric-primary" href="/cases"><span class="metric-label">Cases</span><span class="figure" id="m-cases">—</span><span class="metric-sub" id="m-cases-sub"></span></a>
+  <a class="metric" href="/cases"><span class="metric-label">P1 / P2 IOCs</span><span class="figure figure-lg" id="m-p12">—</span><span class="metric-sub">block + retro-hunt</span></a>
+  <a class="metric" href="/cases"><span class="metric-label">P3 IOCs</span><span class="figure figure-lg" id="m-p3">—</span><span class="metric-sub">confirmed here, not public</span></a>
+  <a class="metric" href="/knowledge"><span class="metric-label">Analyst verdicts</span><span class="figure figure-lg" id="m-ver">—</span><span class="metric-sub" id="m-ver-sub"></span></a>
+  <a class="metric" href="/reports"><span class="metric-label">Threat reports</span><span class="figure figure-lg" id="m-rep">—</span><span class="metric-sub" id="m-rep-sub"></span></a>
+</div>
+
+<div class="grid-main-side">
+  <div>
+    <div class="panel">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-folder2-open"></i>Recent cases</h2><a class="ms-auto small-muted" href="/cases">all →</a></div>
+      <div class="panel-body flush tbl-wrap"><table class="table table-hover mb-0"><thead><tr><th>Seed</th><th>IOCs by priority</th><th class="text-end">Nodes</th><th>Created</th></tr></thead><tbody id="cases">{% for i in range(5) %}<tr>{% for j in range(4) %}<td><span class="skel"></span></td>{% endfor %}</tr>{% endfor %}</tbody></table></div>
+    </div>
+  </div>
+  <div>
+    <div class="panel" id="active-panel" style="display:none">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-hourglass-split"></i>Running now</h2></div>
+      <div class="panel-body" id="active"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-plug"></i>Data sources</h2><a class="ms-auto small-muted" href="/settings">keys →</a></div>
+      <div class="panel-body" id="sources"></div>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-clock-history"></i>Recent jobs</h2><a class="ms-auto small-muted" href="/jobs">all →</a></div>
+      <div class="panel-body" id="jobs"></div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO;
+  const go = () => IO.quickInvestigate(document.getElementById('quick').value);
+  document.getElementById('go').onclick = go;
+  document.getElementById('quick').addEventListener('keydown', e => { if (e.key === 'Enter') go(); });
+  document.getElementById('find').onclick = async () => {
+    const q = document.getElementById('quick').value.trim().replace(/\[\.\]/g, '.').replace(/^hxxp/i, 'http');
+    if (q.length < 3) return;
+    const r = await IO.get('/api/search?q=' + encodeURIComponent(q)).catch(IO.err);
+    if (!r) return;
+    document.getElementById('find-out').innerHTML = (r.verdicts.length ? `<div class="note-box mb-2">Analyst verdicts: ${r.verdicts.map(v => `<b>${esc(v.value)}</b> ${esc(v.verdict || 'label')}${v.actor ? ' · ' + esc(v.actor) : ''}${v.family ? ' · ' + esc(v.family) : ''}`).join('; ')}</div>` : '')
+      + (r.items.length ? `<div class="small-muted mb-1">Seen in ${new Set(r.items.map(i => i.case)).size} case(s):</div>` + r.items.slice(0, 15).map(i => `<div class="small"><a href="/cases/${esc(i.case)}">${esc(i.seed)}</a> — <span class="mono">${esc(i.type)} ${esc(i.value)}</span> ${IO.pri(i.priority)} <span class="small-muted">${esc(i.action || '')}</span></div>`).join('')
+        : '<div class="small-muted">Not in any existing case — click Investigate.</div>');
+  };
+  async function load() {
+    const d = await IO.get('/api/dashboard');
+    const p = d.priorities;
+    document.getElementById('m-cases').textContent = IO.num(d.cases);
+    document.getElementById('m-cases-sub').textContent = `${d.kb_cases} indexed in the knowledge base`;
+    document.getElementById('m-p12').textContent = IO.num((p.P1 || 0) + (p.P2 || 0));
+    document.getElementById('m-p3').textContent = IO.num(p.P3 || 0);
+    document.getElementById('m-ver').textContent = IO.num(d.n_verdicts);
+    document.getElementById('m-ver-sub').textContent = `${d.verdicts.confirmed || 0} confirmed · ${d.verdicts.fp || 0} false positive`;
+    document.getElementById('m-rep').textContent = IO.num(d.reports.reports);
+    document.getElementById('m-rep-sub').textContent = `${IO.num(d.reports.iocs)} IOCs in the dataset`;
+    document.getElementById('cases').innerHTML = d.recent.map(c => `<tr onclick="location='/cases/${esc(c.name)}'">
+      <td>${IO.seedBadge(c.seed_type)} <span class="mono">${esc(IO.trunc(c.seed, 60))}</span>${(c.actors.length || c.families.length) ? `<span class="sub">${esc([...c.actors, ...c.families].slice(0, 4).join(', '))}</span>` : ''}</td>
+      <td>${IO.priSummary(c.priorities)}</td>
+      <td class="text-end mono">${c.nodes}</td><td>${IO.when(c.created)}</td></tr>`).join('')
+      || '<tr><td colspan="4" class="empty-state"><i class="bi bi-inbox"></i>No cases yet — investigate an IOC above.</td></tr>';
+    const KS = {valid: 'valid', invalid: 'invalid key', error: 'error', rate_limited: 'out of quota', untested: 'untested', keyless: 'keyless', not_configured: 'off'};
+    const bad = d.key_health.filter(k => ['invalid', 'error', 'rate_limited'].includes(k.status));
+    document.getElementById('sources').innerHTML = (bad.length ? `<div class="note-box danger mb-2">${bad.length} data source${bad.length > 1 ? 's need' : ' needs'} attention — <a href="/settings">fix keys</a></div>` : '')
+      + d.key_health.map(k => `<div class="d-flex justify-content-between align-items-center small mb-1" title="${esc(k.message || '')}"><span>${esc(k.name)}</span><span class="kstate ${esc(k.status)}">${esc(KS[k.status] || k.status)}</span></div>`).join('')
+      + `<div class="small-muted mt-2">${d.rules} enabled hunting rule${d.rules === 1 ? '' : 's'} · <a href="/rules">manage →</a></div>`;
+    document.getElementById('active-panel').style.display = d.active.length ? '' : 'none';
+    document.getElementById('active').innerHTML = d.active.map(j => `<div class="mb-1"><a href="/jobs/${j.id}">${esc(j.label)}</a> ${IO.jobState(j.state)}</div>`).join('');
+    document.getElementById('jobs').innerHTML = d.jobs.map(j => `<div class="mb-1 small">${IO.jobState(j.state)} <a href="/jobs/${j.id}">${esc(IO.trunc(j.label, 50))}</a> <span class="small-muted">${IO.ago(j.created)}</span>${j.case ? ` · <a href="/cases/${esc(j.case)}">case</a>` : ''}</div>`).join('') || '<span class="small-muted">No jobs yet.</span>';
+    if (d.active.length) setTimeout(load, 4000);
+  }
+  load().catch(IO.err);
+})();
+</script>
+{% endblock %}

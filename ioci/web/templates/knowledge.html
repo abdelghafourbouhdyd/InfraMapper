@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title"><i class="bi bi-journal-check me-2"></i>Knowledge base</h1>
+    <div class="page-subtitle">Analyst verdicts are global: a false positive marked once stays out of every case; a confirmed IOC or an actor / family label is applied wherever it appears.
+      Saved cases also remember their confirmed infrastructure, so a new case is told where it was seen before.</div></div>
+  <button class="btn btn-sm btn-outline-secondary" id="reindex" title="Rebuild the knowledge base from every case (no API calls)"><i class="bi bi-arrow-repeat me-1"></i>Rebuild from cases</button>
+</div>
+<div class="metric-bar mb-3">
+  <div class="metric metric-primary"><span class="metric-label">Verdicts</span><span class="figure" id="m-v">—</span></div>
+  <div class="metric"><span class="metric-label">Cases indexed</span><span class="figure figure-lg" id="m-c">—</span></div>
+  <div class="metric"><span class="metric-label">Remembered observables</span><span class="figure figure-lg" id="m-o">—</span><span class="metric-sub" id="m-path"></span></div>
+</div>
+<div class="grid-main-side">
+  <div>
+    <div class="panel"><div class="panel-body"><form class="filters" id="f" onsubmit="return false">
+      <input class="form-control grow" name="q" placeholder="IOC, actor, family or note…">
+      <select class="form-select" name="verdict"><option value="">Any verdict</option><option value="confirmed">Confirmed</option><option value="fp">False positive</option><option value="label">Label only</option></select>
+    </form></div></div>
+    <div class="panel"><div class="panel-body flush tbl-wrap"><table class="table mb-0"><thead><tr><th>Verdict</th><th>IOC</th><th>Actor / family</th><th>Note</th><th>Set</th><th></th></tr></thead><tbody id="rows"></tbody></table></div></div>
+  </div>
+  <div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-flag"></i>Mark an IOC</h2></div><div class="panel-body">
+      <input class="form-control form-control-sm mono mb-2" id="v-ioc" placeholder="domain, IP, URL or hash (defanged OK)">
+      <select class="form-select form-select-sm mb-2" id="v-verdict"><option value="confirmed">Confirmed malicious</option><option value="fp">False positive (never block / attribute)</option><option value="">Label only (actor / family / note)</option></select>
+      <input class="form-control form-control-sm mb-2" id="v-actor" placeholder="Actor (e.g. APT28)">
+      <input class="form-control form-control-sm mb-2" id="v-family" placeholder="Malware family (e.g. Cobalt Strike)">
+      <textarea class="form-control form-control-sm mb-2" id="v-note" rows="2" placeholder="Why"></textarea>
+      <button class="btn btn-sm btn-primary w-100" id="v-save">Save verdict</button>
+      <div class="small-muted mt-2">You can also right-click a node in any case's pivot graph.</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO, f = document.getElementById('f');
+  const vb = v => v === 'fp' ? '<span class="bpb st-false_positive">false positive</span>' : v === 'confirmed' ? '<span class="bpb lv-HIGH">confirmed</span>' : '<span class="bpb">label</span>';
+  async function load() {
+    const r = await IO.get('/api/knowledge?' + IO.params(Object.fromEntries(new FormData(f)))).catch(IO.err);
+    if (!r) return;
+    document.getElementById('m-v').textContent = IO.num(r.items.length);
+    document.getElementById('m-c').textContent = IO.num(r.cases);
+    document.getElementById('m-o').textContent = IO.num(r.observables);
+    document.getElementById('m-path').textContent = r.path;
+    document.getElementById('rows').innerHTML = r.items.map(v => `<tr><td>${vb(v.verdict)}</td><td class="mono small wrap-any" style="max-width:340px"><span class="small-muted">${esc(v.type)}</span> ${esc(v.value)}</td>
+      <td class="small">${esc([v.actor, v.family].filter(Boolean).join(' · ')) || '—'}</td><td class="small" style="max-width:260px">${esc(v.note || '')}</td>
+      <td class="small">${IO.when(v.updated)}${v.case && v.case !== 'web' ? `<span class="sub"><a href="/cases/${esc(v.case)}">from case</a></span>` : ''}</td>
+      <td><button class="btn btn-xs btn-outline-danger" data-clear="${esc(v.nid)}">Clear</button></td></tr>`).join('')
+      || '<tr><td colspan="6" class="empty-state">No verdicts yet.</td></tr>';
+    document.querySelectorAll('[data-clear]').forEach(b => b.onclick = async () => { if (await IO.confirm('Clear verdict', 'Remove this verdict from every case?')) { await IO.post('/api/knowledge/clear', {nid: b.dataset.clear}).catch(IO.err); load(); } });
+  }
+  document.getElementById('v-save').onclick = async () => {
+    try { await IO.post('/api/knowledge/verdict', {ioc: document.getElementById('v-ioc').value, verdict: document.getElementById('v-verdict').value,
+      actor: document.getElementById('v-actor').value, family: document.getElementById('v-family').value, note: document.getElementById('v-note').value});
+      IO.toast('Verdict saved — open cases pick it up when reloaded', 'ok'); ['v-ioc', 'v-actor', 'v-family', 'v-note'].forEach(id => document.getElementById(id).value = ''); load(); } catch (e) { IO.err(e); }
+  };
+  document.getElementById('reindex').onclick = async () => { try { const j = await IO.post('/api/knowledge/reindex'); location.assign('/jobs/' + j.id); } catch (e) { IO.err(e); } };
+  let t; f.addEventListener('input', () => { clearTimeout(t); t = setTimeout(load, 250); });
+  load();
+})();
+</script>
+{% endblock %}

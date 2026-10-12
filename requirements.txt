@@ -1,0 +1,7 @@
+requests>=2.31
+python-dotenv>=1.0
+rich>=13
+mmh3>=4         # optional: Shodan/FOFA favicon hashes
+flask>=3.0       # web UI: python ioc_investigator.py --web
+waitress>=3.0    # web UI production server (optional)
+markdown-it-py>=3  # web UI: renders report.md (also installed with rich)

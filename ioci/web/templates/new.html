@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title"><i class="bi bi-plus-circle-fill me-2"></i>New investigation</h1>
+    <div class="page-subtitle">Runs the same engine as the command line, in the background. You can leave this page — follow progress under Jobs.</div>
+  </div>
+</div>
+
+<form id="f" onsubmit="return false">
+<ul class="nav nav-tabs mb-3">
+  <li class="nav-item"><button type="button" class="nav-link active" data-mode="ioc"><i class="bi bi-crosshair me-1"></i>IOC(s)</button></li>
+  <li class="nav-item"><button type="button" class="nav-link" data-mode="report"><i class="bi bi-newspaper me-1"></i>Threat report triage</button></li>
+</ul>
+<input type="hidden" name="mode" value="ioc">
+
+<div class="grid-main-side">
+  <div>
+    <div class="panel" data-pane="ioc"><div class="panel-body">
+      <label class="form-label small-muted">One IOC = full pivot investigation. Several (one per line or comma separated) = triage them all like a report.</label>
+      <textarea class="form-control mono" name="iocs" rows="6" placeholder="evil-login-01[.]pages.dev&#10;45.9.148.12&#10;e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"></textarea>
+      <div class="small-muted mt-1" id="count"></div>
+    </div></div>
+
+    <div class="panel" data-pane="report" style="display:none"><div class="panel-body">
+      <p class="small-muted">Every IOC in the report is extracted (defanged or not), noise dropped (citation links, file names, private IPs…), then checked against feeds, prior reporting, VirusTotal and live DNS.</p>
+      <label class="form-label small-muted">Report URL (blog post, advisory, PDF link)</label>
+      <input class="form-control form-control-sm mb-3" name="report_url" placeholder="https://thedfirreport.com/2024/08/26/blacksuit-ransomware/">
+      <label class="form-label small-muted">…or upload a file (.pdf .txt .md .csv .html .json)</label>
+      <input class="form-control form-control-sm mb-3" type="file" name="file" accept=".pdf,.txt,.md,.csv,.html,.htm,.json">
+      <label class="form-label small-muted">…or paste text</label>
+      <textarea class="form-control form-control-sm mono" name="report_text" rows="6" placeholder="Paste an advisory, a tweet thread, a SOC ticket…"></textarea>
+    </div></div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-sliders"></i>Options</h2><span class="panel-meta ms-auto">defaults match the command line</span></div>
+      <div class="panel-body">
+        <div class="row g-3">
+          <div class="col-6 col-md-3"><label class="form-label small-muted">Depth</label><select class="form-select form-select-sm" name="depth"><option value="1">1 — seed only</option><option value="2">2 — also neighbours</option><option value="3">3 — deep (slow)</option></select></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted">Objects per pivot</label><input class="form-control form-control-sm" type="number" name="limit" value="10" min="1" max="100"></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted">Max nodes expanded</label><input class="form-control form-control-sm" type="number" name="max_expand" value="40" min="1" max="500"></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted">STIX TLP</label><select class="form-select form-select-sm" name="tlp"><option>clear</option><option>green</option><option selected>amber</option><option>red</option></select></div>
+        </div>
+        <div class="metric-label mt-3 mb-2">Data sources</div>
+        <div class="d-flex flex-wrap gap-3 small">
+          <label><input type="checkbox" class="form-check-input" data-on="no_vt" checked> VirusTotal</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_urlscan" checked> urlscan.io</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_pdns" checked> Passive DNS</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_ct" checked> Certificate Transparency</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_intel" checked> Prior reporting (OTX / abuse.ch)</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_feeds" checked> Public feeds</label>
+        </div>
+        <div class="metric-label mt-3 mb-2">Hunting</div>
+        <div class="d-flex flex-wrap gap-3 small">
+          <label><input type="checkbox" class="form-check-input" data-on="no_new_hunt" checked> New-domain hunt (kit reuse, NRD look-alikes, CT)</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_regex_hunt" checked> Automatic regex ladder</label>
+          <label><input type="checkbox" class="form-check-input" data-on="no_hop" checked> Hosting pivot (sibling IPs)</label>
+          <label><input type="checkbox" class="form-check-input" name="vt_intel" value="1"> VT Intelligence (premium key)</label>
+        </div>
+        <details class="mt-3"><summary class="small-muted">Extra urlscan queries &amp; domain regexes</summary>
+          <div class="row g-3 mt-1">
+            <div class="col-md-6"><label class="form-label small-muted">urlscan queries (one per line)</label><textarea class="form-control form-control-sm mono" name="queries" rows="3" placeholder="page.domain:*-okta-*&#10;page.title:&quot;Sign in&quot;"></textarea></div>
+            <div class="col-md-6"><label class="form-label small-muted">Domain regexes (whole name, TLD included)</label><textarea class="form-control form-control-sm mono" name="regexes" rows="3" placeholder=".*-sso-[a-z]+\.(com|net)"></textarea></div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </div>
+  <div>
+    <div class="panel"><div class="panel-body">
+      <button class="btn btn-primary w-100 mb-2" id="go"><i class="bi bi-play-fill me-1"></i>Start</button>
+      <div class="small-muted">Jobs run one at a time (they share the VirusTotal / urlscan quotas); later ones queue.</div>
+    </div></div>
+    <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-info-circle"></i>What you get</h2></div><div class="panel-body small">
+      <ul class="ps-3 mb-0">
+        <li>an interactive graph you can keep pivoting on</li>
+        <li>a report: verdict, DNS history, infrastructure overlap, attribution</li>
+        <li>prioritised IOCs (P1–P4) with an action for each</li>
+        <li>STIX 2.1 bundle, Suricata rules and plain IOC lists</li>
+      </ul></div></div>
+  </div>
+</div>
+</form>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const f = document.getElementById('f');
+  document.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => {
+    document.querySelectorAll('[data-mode]').forEach(x => x.classList.toggle('active', x === b));
+    f.mode.value = b.dataset.mode;
+    document.querySelectorAll('[data-pane]').forEach(p => p.style.display = p.dataset.pane === b.dataset.mode ? '' : 'none');
+  });
+  const q = IO.qs();
+  if (q.ioc) f.iocs.value = q.ioc;
+  const count = () => { const n = f.iocs.value.split(/[\s,;]+/).filter(Boolean).length;
+    document.getElementById('count').textContent = n ? (n === 1 ? '1 IOC → full investigation' : `${n} IOCs → triage`) : ''; };
+  f.iocs.addEventListener('input', count); count();
+  document.getElementById('go').onclick = async () => {
+    const fd = new FormData(f);
+    f.querySelectorAll('[data-on]').forEach(cb => { if (!cb.checked) fd.set(cb.dataset.on, '1'); });
+    const btn = document.getElementById('go'); btn.disabled = true;
+    try { const j = await IO.api('POST', '/api/investigate', fd, true); location.assign('/jobs/' + j.id); }
+    catch (e) { IO.err(e); btn.disabled = false; }
+  };
+})();
+</script>
+{% endblock %}

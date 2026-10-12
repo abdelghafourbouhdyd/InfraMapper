@@ -1,0 +1,380 @@
+{% extends "base.html" %}
+{% block extra_head %}
+<style>
+  .report-md { font-size: .84rem; line-height: 1.6; }
+  .report-md h1 { font-size: 1.15rem; font-weight: 700; color: var(--text-bright); }
+  .report-md h2 { font-size: .95rem; font-weight: 700; color: var(--text-bright); margin-top: 1.6rem; padding-bottom: .3rem; border-bottom: 1px solid var(--border); }
+  .report-md h3 { font-size: .85rem; font-weight: 700; margin-top: 1.1rem; }
+  .report-md table { width: 100%; font-size: .74rem; margin: .5rem 0 1rem; display: block; overflow-x: auto; }
+  .report-md th, .report-md td { border: 1px solid var(--border); padding: .3rem .5rem; vertical-align: top; }
+  .report-md th { background: var(--surface2); }
+  .report-md code { font-size: .74rem; word-break: break-all; }
+  .report-md pre { background: var(--surface2); padding: .6rem; border-radius: 6px; overflow-x: auto; }
+  .graph-frame { width: 100%; height: calc(100vh - 230px); min-height: 520px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface2); }
+  pre.hunt { background: var(--surface2); border: 1px solid var(--border); border-radius: 6px; padding: .7rem; max-height: 360px; overflow: auto; font-size: .72rem; white-space: pre-wrap; word-break: break-all; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="page-header">
+  <div style="min-width:0">
+    <div class="small-muted mb-1"><a href="/cases">Cases</a> / <span class="mono">{{ case }}</span></div>
+    <h1 class="page-title wrap-any" id="title">Loading…</h1>
+    <div class="page-subtitle" id="sub"></div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-sm btn-primary" href="/cases/{{ case }}/graph/" target="_blank" rel="noopener"><i class="bi bi-diagram-3 me-1"></i>Open graph full screen</a>
+    <button class="btn btn-sm btn-outline-secondary" id="rerun"><i class="bi bi-arrow-repeat me-1"></i>Re-investigate</button>
+  </div>
+</div>
+
+<div class="metric-bar mb-3" id="metrics"></div>
+
+<ul class="nav nav-tabs mb-3" id="tabs">
+  <li class="nav-item"><button class="nav-link" data-tab="report"><i class="bi bi-file-text me-1"></i>Report</button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="iocs"><i class="bi bi-list-check me-1"></i>IOCs <span class="small-muted" id="n-iocs"></span></button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="pivots"><i class="bi bi-bar-chart-steps me-1"></i>Pivot results <span class="small-muted" id="n-piv"></span></button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="articles"><i class="bi bi-newspaper me-1"></i>Threat reports <span class="small-muted" id="n-art"></span></button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="graph"><i class="bi bi-diagram-3 me-1"></i>Pivot graph</button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="hunt"><i class="bi bi-crosshair me-1"></i>Suricata &amp; IOC lists</button></li>
+  <li class="nav-item"><button class="nav-link" data-tab="files"><i class="bi bi-download me-1"></i>Exports</button></li>
+</ul>
+
+<section data-pane="report"><div class="panel"><div class="panel-body report-md" id="report"></div></div></section>
+
+<section data-pane="iocs">
+  <div class="panel"><div class="panel-body"><div class="filters">
+    <input class="form-control grow" id="iq" placeholder="Filter IOC, reason, family…">
+    <select class="form-select" id="ip"><option value="">Any priority</option></select>
+    <select class="form-select" id="it"><option value="">Any type</option></select>
+    <button class="btn btn-sm btn-outline-secondary" id="copy-iocs"><i class="bi bi-clipboard me-1"></i>Copy shown</button>
+    <a class="btn btn-sm btn-outline-secondary" href="/cases/{{ case }}/files/iocs.csv?dl=1"><i class="bi bi-filetype-csv me-1"></i>CSV</a>
+  </div></div></div>
+  <div class="panel"><div class="panel-body flush tbl-wrap"><table class="table mb-0"><thead><tr><th>Priority</th><th>Type</th><th>IOC</th><th>Action</th><th>Why</th><th>Families</th><th>Last active</th></tr></thead><tbody id="iocs"></tbody></table></div>
+    <div class="pager" id="ipager"></div></div>
+</section>
+
+<section data-pane="pivots">
+  <details class="panel mb-3" id="method"><summary class="panel-body py-2 small" style="cursor:pointer"><i class="bi bi-info-circle me-1"></i><b>How fidelity and confidence are scored</b> <span class="small-muted">— heuristic, explainable, not probabilities</span></summary>
+    <div class="panel-body pt-0 method-note">
+      <p class="mb-2"><b>Confidence</b> — how strongly the evidence supports that this entity is related to the investigation. Each relationship = observation strength (a served certificate or DNS resolution is direct; a string in a binary or a VT comment is not) × source reliability, combined across <i>independent</i> sources, × freshness, × conflicts (analyst false positive, reports outside the usage window, domain resolves elsewhere now). An entity's confidence follows the strongest chain from the seed; passing through a shared artefact costs its specificity (HTML body ≫ page title), shared hosting passes almost nothing. One source alone is capped at 80.</p>
+      <p class="mb-2"><b>Fidelity</b> — how useful the entity is for <i>this</i> investigation: 30% indicator specificity + 25% confidence + 20% context (hops from the seed, cluster membership) + 15% threat signal (triage priority, VT detections) + 10% freshness, × false-positive risk (warninglists, Tor, shared hosting…), × a relevance gate below confidence 40.</p>
+      <p class="mb-0">Bands: <b>high</b> ≥ 75 · <b>medium</b> ≥ 50 · <b>low</b> ≥ 25 · <b>very low</b>. <b>n/a</b> = insufficient evidence (no path to the seed). These are <b>heuristic rankings, not calibrated probabilities</b>: 80 does not mean “80% likely”. Open any row to see every factor and its points.</p>
+    </div></details>
+  <div class="panel"><div class="panel-body"><div class="filters">
+    <input class="form-control grow" id="pq" placeholder="Filter value, family, source…" aria-label="Filter pivot results">
+    <select class="form-select" id="pt" aria-label="Type"><option value="">Any type</option></select>
+    <select class="form-select" id="ps" aria-label="Source"><option value="">Any source</option></select>
+    <select class="form-select" id="pw" aria-label="Last observed">
+      <option value="">Any time</option><option value="30">Seen in last 30 days</option><option value="90">Last 90 days</option><option value="365">Last year</option>
+      <option value="stale">Stale (&gt; 1 year)</option><option value="none">No date</option></select>
+    <label class="range-f">Fidelity ≥ <input type="range" id="pf" min="0" max="100" step="5" value="0"><output id="pf-o">0</output></label>
+    <label class="range-f">Confidence ≥ <input type="range" id="pc" min="0" max="100" step="5" value="0"><output id="pc-o">0</output></label>
+  </div>
+  <div class="filters mt-2 small">
+    <label><input type="checkbox" class="form-check-input" id="f-rec"> Recommended next pivots</label>
+    <label><input type="checkbox" class="form-check-input" id="f-con"> With conflicting evidence</label>
+    <label><input type="checkbox" class="form-check-input" id="f-clu"> Confirmed cluster only</label>
+    <label><input type="checkbox" class="form-check-input" id="f-hosts" checked> Hosts &amp; certificates only</label>
+    <span class="ms-auto d-flex gap-2"><button class="btn btn-xs btn-outline-secondary" id="cmp" disabled title="Tick two rows to compare why they score differently"><i class="bi bi-layout-split me-1"></i>Compare <span id="ncmp">0</span>/2</button>
+      <button class="btn btn-xs btn-outline-secondary" id="p-reload" data-busy="Loading…"><i class="bi bi-arrow-clockwise me-1"></i>Refresh</button></span>
+  </div></div></div>
+  <div class="d-flex flex-wrap gap-2 mb-2" id="pchips"></div>
+  <div class="panel"><div class="panel-body flush tbl-wrap"><table class="table table-hover mb-0 tbl-sort" id="ptable"><thead><tr>
+    <th style="width:28px"><span class="visually-hidden">Compare</span></th><th data-sort="value">Entity</th><th data-sort="fidelity">Fidelity</th><th data-sort="confidence">Confidence</th>
+    <th>Sources</th><th data-sort="last_seen">Last observed</th><th data-sort="hops">Hops</th><th class="text-end">Actions</th></tr></thead>
+    <tbody id="prows"></tbody></table></div><div class="pager" id="ppager"></div></div>
+</section>
+
+<section data-pane="articles">
+  <div class="note-box mb-2">Published reports (<a href="/reports">Threat reports</a>) that list an IOC of this case, read live from the knowledge base — reports ingested after the investigation appear too. <b>Other IOCs</b> are what the same publication lists alongside: leads for the same campaign.</div>
+  <div id="articles"></div>
+</section>
+
+<section data-pane="graph">
+  <div class="note-box mb-2">Click a node, then <b>Pivot</b> to expand it with VirusTotal / urlscan / passive DNS / CT — the case is updated and saved. Right-click a node for verdicts (false positive / confirmed / actor).</div>
+  <div style="position:relative">
+    <div id="frame-loading" class="empty-state" style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:1">
+      <span class="spinner-border mb-2"></span>Loading the graph… (new reporting / VT comments are fetched in the background and merged in when ready)</div>
+    <iframe class="graph-frame" id="frame" title="Pivot graph"></iframe>
+  </div>
+</section>
+
+<section data-pane="hunt"><div id="hunt"></div></section>
+<section data-pane="files"><div class="panel"><div class="panel-body" id="files"></div></div></section>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const CASE = {{ case|tojson }};
+  const {esc} = IO;
+  let D, iocRows = [];
+  const tabs = document.querySelectorAll('[data-tab]');
+  function show(t) {
+    tabs.forEach(b => b.classList.toggle('active', b.dataset.tab === t));
+    document.querySelectorAll('[data-pane]').forEach(p => p.style.display = p.dataset.pane === t ? '' : 'none');
+    if (t === 'pivots' && !PV.loaded) loadPivots();
+    if (t === 'articles' && !ART.loaded) loadArticles();
+    if (t === 'graph') {
+      const fr = document.getElementById('frame');
+      if (!fr.src) { fr.onload = () => document.getElementById('frame-loading').style.display = 'none'; fr.src = `/cases/${encodeURIComponent(CASE)}/graph/`; }
+    }
+    history.replaceState(null, '', '#' + t);
+  }
+  tabs.forEach(b => b.onclick = () => show(b.dataset.tab));
+
+  const ART = {loaded: false};
+  async function loadArticles() {
+    const box = document.getElementById('articles');
+    ART.loaded = true;
+    box.innerHTML = IO.loadingBox('Searching the threat report dataset…');
+    const r = await IO.get(`/api/cases/${encodeURIComponent(CASE)}/articles`).catch(e => { ART.loaded = false; box.innerHTML = IO.errorBox(e); });
+    if (!r) return;
+    document.getElementById('n-art').textContent = `(${r.items.length})`;
+    const ioc = (i, cls) => `<span class="mono small wrap-any ${cls || ''}">${esc(i.value)}</span> <span class="small-muted">${esc(i.type)}${i.role ? ', ' + esc(i.role) : ''}${i.in_case ? ', in this case' : ''}</span>`;
+    box.innerHTML = r.items.map(x => `<div class="panel"><div class="panel-body">
+      <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.title)}</b> <i class="bi bi-box-arrow-up-right small"></i></a>
+      <div class="small-muted">${x.feed ? `<span class="bpb"><i class="bi bi-rss"></i>${esc(x.feed)}</span> ` : ''}${esc(x.source)} · published ${IO.date(x.published)} · ${x.n_iocs} IOCs${(x.actors.length || x.families.length) ? ' · <b>' + esc([...x.actors, ...x.families].join(', ')) + '</b>' : ''}</div>
+      ${x.summary ? `<div class="small mt-1">${esc(IO.trunc(x.summary, 400))}</div>` : ''}
+      <div class="small mt-2"><b>Matching IOC${x.matched.length > 1 ? 's' : ''}</b></div>
+      <div>${x.matched.map(m => ioc(m) + (m.seed ? ' <span class="bpb lv-HIGH">seed</span>' : '')).join('<br>')}</div>
+      ${x.others.length ? `<details class="mt-2"><summary class="small" style="cursor:pointer"><b>Other IOCs in this article</b> (${x.others.length})
+        <button class="btn btn-xs btn-outline-secondary ms-1" data-copy="${esc(x.others.map(o => o.value).join('\n'))}" title="Copy"><i class="bi bi-clipboard"></i></button></summary>
+        <div class="mt-1">${x.others.map(o => ioc(o)).join('<br>')}</div></details>` : ''}
+      </div></div>`).join('')
+      || '<div class="empty-state">No IOC of this case appears in an ingested threat report.</div>';
+    box.querySelectorAll('[data-copy]').forEach(b => b.onclick = e => { e.preventDefault(); IO.copy(b.dataset.copy); });
+  }
+
+  function renderIocs() {
+    const q = document.getElementById('iq').value.toLowerCase(), p = document.getElementById('ip').value, t = document.getElementById('it').value;
+    const rows = iocRows.filter(r => (!p || r.priority === p) && (!t || r.type === t) && (!q || Object.values(r).join(' ').toLowerCase().includes(q)));
+    document.getElementById('iocs').innerHTML = rows.slice(0, 1000).map(r => `<tr>
+      <td>${IO.pri(r.priority) || esc(r.priority)}</td><td class="small">${esc(r.type)}</td>
+      <td class="mono small wrap-any" style="max-width:360px">${esc(r.ioc)} <button class="btn btn-xs btn-outline-secondary" data-copy="${esc(r.ioc)}" title="Copy"><i class="bi bi-clipboard"></i></button></td>
+      <td class="small" style="max-width:220px">${esc(r.action)}</td><td class="small" style="max-width:320px">${esc(r.reasons)}</td>
+      <td class="small">${esc(r.families)}</td><td class="small text-nowrap">${esc(r.last_active)}</td></tr>`).join('')
+      || '<tr><td colspan="7" class="empty-state">No IOC matches.</td></tr>';
+    document.getElementById('ipager').textContent = `${rows.length} of ${iocRows.length} IOCs` + (rows.length > 1000 ? ' (first 1000 shown)' : '');
+    document.querySelectorAll('[data-copy]').forEach(b => b.onclick = () => IO.copy(b.dataset.copy));
+    return rows;
+  }
+  ['iq', 'ip', 'it'].forEach(id => document.getElementById(id).addEventListener('input', renderIocs));
+  document.getElementById('copy-iocs').onclick = () => IO.copy(renderIocs().map(r => r.ioc).join('\n'));
+
+  async function load() {
+    D = await IO.get('/api/cases/' + encodeURIComponent(CASE)).catch(IO.err);
+    if (!D) return;
+    const s = D.summary;
+    document.getElementById('title').innerHTML = `${IO.seedBadge(s.seed_type)} <span class="mono">${esc(s.seed)}</span>`;
+    document.getElementById('sub').innerHTML = `created ${IO.fmt(s.created)} · updated ${IO.ago(s.updated)}` + ((s.actors.length || s.families.length) ? ` · <b>${esc([...s.actors, ...s.families].join(', '))}</b>` : '');
+    const P = s.priorities;
+    const leadKeys = Object.keys(P).filter(k => k.startsWith('lead')).sort();
+    const cells = [['P1', 'block now'], ['P2', 'block + retro-hunt'], ['P3', 'hunt, not public yet'], ['P4', 'watch'],
+      ...leadKeys.map(k => [k, 'new-domain lead — verify']), ['noise', 'do not block alone']].filter(([k], i) => i < 3 || P[k]);
+    document.getElementById('metrics').innerHTML = cells
+      .map(([k, l], i) => `<button class="metric ${i === 0 ? 'metric-primary' : ''}" data-pf="${k}"><span class="metric-label">${k}</span><span class="figure ${i ? 'figure-lg' : ''}">${P[k] || 0}</span><span class="metric-sub">${l}</span></button>`).join('')
+      + `<div class="metric"><span class="metric-label">Graph</span><span class="figure figure-lg">${s.nodes}</span><span class="metric-sub">${s.edges} edges · ${s.pivots + s.manual_pivots} pivots</span></div>`;
+    document.querySelectorAll('[data-pf]').forEach(m => m.onclick = () => { document.getElementById('ip').value = m.dataset.pf; show('iocs'); renderIocs(); });
+    document.getElementById('report').innerHTML = D.report_html || '<span class="small-muted">No report.md in this case.</span>';
+    document.querySelectorAll('#report table').forEach(t => t.classList.add('table', 'table-sm'));
+    iocRows = D.iocs;
+    document.getElementById('n-iocs').textContent = `(${iocRows.length})`;
+    const order = ['P1', 'P2', 'P3', 'P4'];
+    const pris = [...new Set(iocRows.map(r => r.priority))].sort((a, b) => (order.indexOf(a) + 1 || 9) - (order.indexOf(b) + 1 || 9) || a.localeCompare(b));
+    const ipSel = document.getElementById('ip'), cur = ipSel.value;
+    ipSel.innerHTML = '<option value="">Any priority</option>' + pris.map(p => `<option>${esc(p)}</option>`).join('');
+    ipSel.value = cur;
+    const types = [...new Set(iocRows.map(r => r.type))].sort();
+    document.getElementById('it').innerHTML = '<option value="">Any type</option>' + types.map(t => `<option>${esc(t)}</option>`).join('');
+    renderIocs();
+    document.getElementById('hunt').innerHTML = D.hunt.length ? D.hunt.map((h, i) => `<div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-file-code"></i>${esc(h.name)}</h2>
+      <span class="panel-meta">${h.lines} lines</span><div class="ms-auto d-flex gap-2"><button class="btn btn-xs btn-outline-secondary" data-hcopy="${i}"><i class="bi bi-clipboard me-1"></i>Copy</button>
+      <a class="btn btn-xs btn-outline-secondary" href="/cases/${encodeURIComponent(CASE)}/hunt/${encodeURIComponent(h.name)}"><i class="bi bi-download me-1"></i>Download</a></div></div>
+      <div class="panel-body"><pre class="hunt mb-0">${esc(h.text)}</pre></div></div>`).join('')
+      : '<div class="empty-state">No Suricata rules or IOC lists in this case (nothing actionable to export).</div>';
+    document.querySelectorAll('[data-hcopy]').forEach(b => b.onclick = () => IO.copy(D.hunt[+b.dataset.hcopy].text));
+    const desc = {'graph.html': 'Standalone interactive graph (works offline, no pivoting)', 'report.md': 'Markdown report', 'iocs.csv': 'IOCs with priority, action and reasons — SIEM watchlist / EDR / firewall import',
+      'graph.json': 'Raw nodes and edges', 'stix2.json': 'STIX 2.1 bundle of the actionable IOCs (OpenCTI / MISP / TAXII)'};
+    document.getElementById('files').innerHTML = s.files.map(f => `<div class="d-flex align-items-center gap-2 mb-2"><i class="bi bi-file-earmark"></i><span class="mono" style="min-width:110px">${esc(f)}</span>
+      <span class="small-muted flex-grow-1">${esc(desc[f] || '')}</span><a class="btn btn-xs btn-outline-secondary" href="/cases/${encodeURIComponent(CASE)}/files/${f}" target="_blank" rel="noopener">Open</a>
+      <a class="btn btn-xs btn-outline-primary" href="/cases/${encodeURIComponent(CASE)}/files/${f}?dl=1">Download</a></div>`).join('');
+  }
+  // ── pivot results: scored entities, evidence, compare, continue pivoting ──────────────
+  const PV = {rows: [], byId: {}, sort: ['fidelity', -1], sel: [], shown: 300, loaded: false, sources: null};
+  const PIVOTABLE = new Set(['File', 'Domain', 'IP', 'URL', 'Certificate']);
+  const HOSTLIKE = new Set([...PIVOTABLE]);
+  const SRC_LABEL = {vt: 'VirusTotal', urlscan: 'urlscan', pdns: 'Passive DNS', ct: 'Cert Transparency'};
+  const DAYS = 86400;
+  const flags = r => [r.recommend ? '<span class="flag rec" title="Specific, well-supported and not expanded yet"><i class="bi bi-signpost-split"></i>pivot next</span>' : '',
+    r.stale ? '<span class="flag stale" title="Newest observation is more than a year old"><i class="bi bi-clock-history"></i>stale</span>' : '',
+    r.conflicts.length ? `<span class="flag conflict" title="${esc(r.conflicts.join('\n'))}"><i class="bi bi-exclamation-triangle"></i>${r.conflicts.length} conflict${r.conflicts.length > 1 ? 's' : ''}</span>` : '',
+    r.limited.length ? `<span class="flag" title="${esc(r.limited.join('\n'))}"><i class="bi bi-hourglass-split"></i>limited data</span>` : '',
+    r.verdict ? `<span class="bpb ${r.verdict === 'fp' ? 'st-false_positive' : 'st-confirmed_malicious'}">${r.verdict === 'fp' ? 'false positive' : 'confirmed'}</span>` : ''].join(' ');
+
+  function filtered() {
+    const q = document.getElementById('pq').value.toLowerCase().trim(), t = document.getElementById('pt').value, s = document.getElementById('ps').value,
+      w = document.getElementById('pw').value, mf = +document.getElementById('pf').value, mc = +document.getElementById('pc').value,
+      rec = document.getElementById('f-rec').checked, con = document.getElementById('f-con').checked, clu = document.getElementById('f-clu').checked,
+      hosts = document.getElementById('f-hosts').checked, now = Date.now() / 1000;
+    const rows = PV.rows.filter(r => (!t || r.type === t) && (!s || r.sources.includes(s)) && (r.fidelity || 0) >= mf && (r.confidence || 0) >= mc
+      && (!rec || r.recommend) && (!con || r.conflicts.length) && (!clu || r.cluster === true || r.seed) && (!hosts || HOSTLIKE.has(r.type) || r.seed)
+      && (!w || (w === 'none' ? !r.last_seen : w === 'stale' ? r.stale : r.last_seen && now - r.last_seen <= +w * DAYS))
+      && (!q || [r.value, r.type, r.priority, ...r.sources, ...r.families].join(' ').toLowerCase().includes(q)));
+    const [k, dir] = PV.sort;
+    rows.sort((a, b) => {
+      if (a.seed !== b.seed) return a.seed ? -1 : 1;
+      const x = a[k], y = b[k];
+      if (x == null && y == null) return 0; if (x == null) return 1; if (y == null) return -1;
+      return (typeof x === 'string' ? x.localeCompare(y) : x - y) * dir;
+    });
+    return rows;
+  }
+
+  function renderPivots() {
+    const rows = filtered();
+    document.getElementById('prows').innerHTML = rows.slice(0, PV.shown).map(r => `<tr class="${PV.sel.includes(r.id) ? 'sel-row' : ''}">
+      <td>${r.seed ? '' : `<input type="checkbox" class="form-check-input" data-sel="${esc(r.id)}" ${PV.sel.includes(r.id) ? 'checked' : ''} aria-label="Select for comparison">`}</td>
+      <td style="max-width:420px"><span class="bpb"><i class="bi bi-${IO.typeIcon(r.type)}"></i>${esc(r.type)}</span> ${r.seed ? '<span class="bpb lv-MEDIUM">seed</span> ' : ''}${IO.pri(r.priority)}
+        <a href="#" class="mono small wrap-any" data-ev="${esc(r.id)}">${esc(IO.trunc(r.value, 90))}</a><div class="mt-1 d-flex flex-wrap gap-1">${flags(r)}</div></td>
+      <td>${IO.scoreCell(r.fidelity, 'Fidelity')}</td><td>${IO.scoreCell(r.confidence, 'Confidence')}</td>
+      <td class="small">${r.sources.map(s => `<span class="bpb src">${esc(s)}</span>`).join(' ') || '<span class="small-muted">—</span>'}</td>
+      <td class="small text-nowrap">${r.last_seen ? IO.when(r.last_seen) : '<span class="small-muted">no date</span>'}</td>
+      <td class="mono small">${r.hops == null ? '—' : r.hops}</td>
+      <td class="text-end text-nowrap"><button class="btn btn-xs btn-outline-secondary" data-ev="${esc(r.id)}">Evidence</button>
+        ${PIVOTABLE.has(r.type) && r.verdict !== 'fp' ? `<button class="btn btn-xs ${r.recommend ? 'btn-primary' : 'btn-outline-primary'}" data-pv="${esc(r.id)}" data-busy="Loading case…">${r.expanded ? 'Re-pivot' : 'Pivot'}</button>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="8" class="empty-state"><i class="bi bi-funnel"></i>No entity matches these filters.</td></tr>';
+    document.getElementById('ppager').innerHTML = `${rows.length} of ${PV.rows.length} entities` +
+      (rows.length > PV.shown ? ` · <button class="btn btn-xs btn-outline-secondary" id="pmore">Show more</button>` : '');
+    const more = document.getElementById('pmore'); if (more) more.onclick = () => { PV.shown += 300; renderPivots(); };
+    document.querySelectorAll('#ptable th[data-sort]').forEach(th => { th.classList.toggle('asc', PV.sort[0] === th.dataset.sort && PV.sort[1] > 0); th.classList.toggle('desc', PV.sort[0] === th.dataset.sort && PV.sort[1] < 0); });
+    document.querySelectorAll('[data-ev]').forEach(a => a.onclick = e => { e.preventDefault(); evidence(a.dataset.ev); });
+    document.querySelectorAll('[data-pv]').forEach(b => b.onclick = () => IO.busy(b, () => pivotDialog(b.dataset.pv)));
+    document.querySelectorAll('[data-sel]').forEach(c => c.onchange = () => {
+      PV.sel = c.checked ? [...PV.sel.filter(x => x !== c.dataset.sel), c.dataset.sel].slice(-2) : PV.sel.filter(x => x !== c.dataset.sel);
+      document.getElementById('ncmp').textContent = PV.sel.length; document.getElementById('cmp').disabled = PV.sel.length !== 2; renderPivots();
+    });
+  }
+
+  function chips() {
+    const c = (f, l, cls) => { const n = PV.rows.filter(f).length; return n ? `<span class="flag ${cls || ''}">${n} ${l}</span>` : ''; };
+    document.getElementById('pchips').innerHTML = c(r => r.fidelity_band === 'high', 'high fidelity', 'rec') + c(r => r.recommend, 'recommended pivots', 'rec')
+      + c(r => r.stale, 'stale', 'stale') + c(r => r.conflicts.length, 'with conflicts', 'conflict') + c(r => r.confidence == null, 'insufficient evidence');
+  }
+
+  async function loadPivots() {
+    PV.loaded = true;
+    document.getElementById('prows').innerHTML = IO.skeletonRows(8, 6);
+    try {
+      const r = await IO.get(`/api/cases/${encodeURIComponent(CASE)}/pivots`);
+      PV.rows = r.items; PV.byId = Object.fromEntries(r.items.map(x => [x.id, x]));
+      document.getElementById('n-piv').textContent = `(${r.items.filter(x => HOSTLIKE.has(x.type)).length})`;
+      const types = [...new Set(r.items.map(x => x.type))].sort(), srcs = [...new Set(r.items.flatMap(x => x.sources))].sort();
+      const keep = (id, opts, lbl) => { const el = document.getElementById(id), cur = el.value; el.innerHTML = `<option value="">${lbl}</option>` + opts.map(o => `<option>${esc(o)}</option>`).join(''); el.value = cur; };
+      keep('pt', types, 'Any type'); keep('ps', srcs, 'Any source');
+      chips(); renderPivots();
+    } catch (e) {
+      PV.loaded = false;
+      document.getElementById('prows').innerHTML = `<tr><td colspan="8">${IO.errorBox(e, true)}</td></tr>`;
+      const b = document.querySelector('#prows [data-retry]'); if (b) b.onclick = loadPivots;
+    }
+  }
+
+  function linkRows(r) {
+    return r.links.map(l => `<div class="factor ${l.conflicts.length ? 'conflict' : 'support'}"><i class="bi bi-${IO.typeIcon(l.type)} ic"></i>
+      <div><a href="#" data-ev="${esc(l.id)}" class="mono small wrap-any">${esc(l.type)} ${esc(IO.trunc(l.value, 70))}</a>
+        <div class="small-muted">${esc(l.rels.join(', '))} · ${esc(l.sources.join(', ') || 'source unknown')} · ${l.last_seen ? 'last seen ' + IO.epoch(l.last_seen) : 'no date'}${l.stale ? ' · <b>stale</b>' : ''}</div>
+        ${l.conflicts.map(c => `<div class="small" style="color:var(--sev-high)"><i class="bi bi-exclamation-triangle"></i> ${esc(c)}</div>`).join('')}
+        ${l.limited.length ? `<div class="small-muted"><i class="bi bi-hourglass-split"></i> ${esc(l.limited.join(' · '))}</div>` : ''}</div>
+      <span>${IO.score(l.confidence, 'Relationship confidence')}</span></div>`).join('') + (r.n_links > r.links.length ? `<div class="small-muted mt-1">+${r.n_links - r.links.length} weaker relationships not shown</div>` : '');
+  }
+
+  function evidence(id) {
+    const r = PV.byId[id];
+    if (!r) return IO.toast('That entity is not in the scored list (filtered artefact)', 'warn');
+    const path = r.path.length ? r.path.map((p, i) => `${i ? '<span class="arr">→</span>' : ''}<a href="#" class="step" data-ev="${esc(p.id)}" title="${esc(p.value)}">${esc(p.type)} ${esc(p.value)}</a>`).join('') : '<span class="small-muted">no path to the seed</span>';
+    const html = `<div class="d-flex gap-4 flex-wrap mb-2"><div><div class="sec-h">Fidelity</div>${IO.scoreCell(r.fidelity, 'Fidelity')}</div><div><div class="sec-h">Confidence</div>${IO.scoreCell(r.confidence, 'Confidence')}</div>
+        <div><div class="sec-h">Last observed</div><span class="small">${r.last_seen ? IO.fmt(r.last_seen) : 'no date'}</span></div><div><div class="sec-h">Sources</div><span class="small">${esc(r.sources.join(', ') || '—')}</span></div></div>
+      <div class="d-flex flex-wrap gap-1 mb-2">${flags(r)}</div>
+      ${r.action ? `<div class="note-box">${IO.pri(r.priority)} ${esc(r.action)}</div>` : ''}
+      <div class="sec-h">Strongest chain from the seed</div><div class="path">${path}</div>
+      <div class="sec-h">Why this fidelity</div>${IO.factors(r.factors.fidelity)}
+      <div class="sec-h">Why this confidence</div>${IO.factors(r.factors.confidence)}
+      ${r.conflicts.length ? `<div class="sec-h">Conflicting evidence</div>${r.conflicts.map(c => `<div class="note-box danger">${esc(c)}</div>`).join('')}` : ''}
+      ${r.limited.length ? `<div class="sec-h">Data limitations</div><div class="note-box warn">${esc(r.limited.join(' · '))}. The score reflects only what was observed — treat it as provisional.</div>` : ''}
+      <div class="sec-h">Relationships (${r.n_links}) — click to continue exploring</div>${linkRows(r)}`;
+    const foot = `<button class="btn btn-sm btn-outline-secondary" data-copy-v>Copy value</button>
+      <a class="btn btn-sm btn-outline-secondary" href="/cases/${encodeURIComponent(CASE)}/graph/" target="_blank" rel="noopener">Open graph</a>
+      ${PIVOTABLE.has(r.type) && r.verdict !== 'fp' ? `<button class="btn btn-sm btn-primary" data-pv-d>${r.expanded ? 'Pivot again' : 'Pivot on this ' + esc(r.type)}</button>` : ''}`;
+    const d = IO.drawer(`<span class="bpb me-1"><i class="bi bi-${IO.typeIcon(r.type)}"></i>${esc(r.type)}</span><span class="mono">${esc(r.value)}</span>`, html, foot);
+    d.querySelectorAll('.drawer-body [data-ev]').forEach(a => a.onclick = e => { e.preventDefault(); evidence(a.dataset.ev); });
+    d.querySelector('[data-copy-v]').onclick = () => IO.copy(r.value);
+    const pv = d.querySelector('[data-pv-d]'); if (pv) { pv.dataset.busy = 'Loading case…'; pv.onclick = () => IO.busy(pv, () => pivotDialog(r.id)); }
+  }
+
+  function compare() {
+    const [a, b] = PV.sel.map(id => PV.byId[id]);
+    if (!a || !b) return;
+    const terms = x => Object.fromEntries(x.factors.fidelity.filter(f => f.kind === 'term').map(f => [f.key, f]));
+    const ta = terms(a), tb = terms(b);
+    const rows = ['specificity', 'confidence', 'context', 'threat', 'freshness'].map(k => {
+      const pa = ta[k] ? ta[k].points : 0, pb = tb[k] ? tb[k].points : 0, d = Math.round((pa - pb) * 10) / 10;
+      return `<tr><td class="small"><b>${k}</b></td><td class="small">${esc(ta[k] ? ta[k].label : '—')}<div class="mono">${pa}</div></td>
+        <td class="small">${esc(tb[k] ? tb[k].label : '—')}<div class="mono">${pb}</div></td><td class="mono small text-end" style="color:${d > 0 ? 'var(--success)' : d < 0 ? 'var(--sev-high)' : 'var(--muted)'}">${d > 0 ? '+' : ''}${d}</td></tr>`;
+    }).join('');
+    const top = ['specificity', 'confidence', 'context', 'threat', 'freshness'].map(k => [k, (ta[k] ? ta[k].points : 0) - (tb[k] ? tb[k].points : 0)]).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]))[0];
+    const lead = (a.fidelity || 0) === (b.fidelity || 0) ? 'They score the same fidelity.'
+      : `<b>${esc(IO.trunc((a.fidelity > b.fidelity ? a : b).value, 50))}</b> scores ${Math.abs(a.fidelity - b.fidelity)} points higher fidelity, mostly from <b>${top[0]}</b> (${top[1] > 0 ? '+' : ''}${Math.round(top[1] * 10) / 10} pts).`;
+    const html = `<div class="note-box mb-3">${lead} Confidence: ${a.confidence ?? 'n/a'} vs ${b.confidence ?? 'n/a'}.</div>
+      <table class="table table-sm"><thead><tr><th></th><th class="mono small wrap-any">A · ${esc(IO.trunc(a.value, 34))}<div>${IO.score(a.fidelity, 'Fidelity')}</div></th>
+        <th class="mono small wrap-any">B · ${esc(IO.trunc(b.value, 34))}<div>${IO.score(b.fidelity, 'Fidelity')}</div></th><th class="text-end small">A − B</th></tr></thead><tbody>${rows}</tbody></table>
+      <div class="sec-h">Confidence evidence — A</div>${IO.factors(a.factors.confidence)}
+      <div class="sec-h">Confidence evidence — B</div>${IO.factors(b.factors.confidence)}`;
+    IO.drawer('Why these two score differently', html);
+  }
+
+  async function pivotDialog(id) {
+    const r = PV.byId[id];
+    if (!PV.sources) {
+      try { PV.sources = (await IO.get(`/cases/${encodeURIComponent(CASE)}/graph/api/status`)).sources; }
+      catch (e) { return IO.err(e); }
+    }
+    const opts = Object.entries(PV.sources).map(([k, on]) => `<label class="me-3"><input type="checkbox" class="form-check-input" data-src="${k}" ${on ? 'checked' : 'disabled'}> ${esc(SRC_LABEL[k] || k)}${on ? '' : ' <span class="small-muted">(no key)</span>'}</label>`).join('');
+    const m = IO.modal(`Pivot on ${r.type}`, `<div class="mono small wrap-any mb-2">${esc(r.value)}</div><div class="small mb-2">${opts}</div>
+      <div class="small-muted">Runs the same expansion as the graph page; the case is updated and re-scored. Fidelity ${r.fidelity ?? 'n/a'} · confidence ${r.confidence ?? 'n/a'}.</div><div class="field-err" data-err></div><div data-prog></div>`,
+      {footer: '<button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-sm btn-primary" data-go data-busy="Running…">Run pivot</button>'});
+    m.el.querySelector('[data-go]').onclick = e => IO.busy(e.currentTarget, async () => {
+      const sources = [...m.el.querySelectorAll('[data-src]:checked')].map(x => x.dataset.src);
+      if (!sources.length) { m.el.querySelector('[data-err]').textContent = 'Pick at least one data source.'; return; }
+      try {
+        const j = await IO.post(`/cases/${encodeURIComponent(CASE)}/graph/api/pivot`, {id, sources});
+        const prog = m.el.querySelector('[data-prog]');
+        for (;;) {
+          await new Promise(res => setTimeout(res, 1500));
+          const s = await IO.get(`/cases/${encodeURIComponent(CASE)}/graph/api/job/${j.job}`);
+          prog.innerHTML = `<pre class="hunt mt-2 mb-0" style="max-height:160px">${esc((s.log || []).slice(-8).join('\n') || s.state + '…')}</pre>`;
+          if (s.state === 'done') { IO.toast(`Pivot done: ${s.result.new_nodes} new entities`, 'ok'); m.close(); if (IO.closeDrawer) IO.closeDrawer(); PV.loaded = false; await loadPivots(); load(); return; }
+          if (s.state === 'error') { m.el.querySelector('[data-err]').textContent = 'Pivot failed: ' + (s.error || 'unknown error'); return; }
+        }
+      } catch (ex) { m.el.querySelector('[data-err]').textContent = ex.message; }
+    });
+  }
+
+  ['pq', 'pt', 'ps', 'pw', 'f-rec', 'f-con', 'f-clu', 'f-hosts'].forEach(id => document.getElementById(id).addEventListener('input', () => { PV.shown = 300; renderPivots(); }));
+  [['pf', 'pf-o'], ['pc', 'pc-o']].forEach(([i, o]) => document.getElementById(i).addEventListener('input', e => { document.getElementById(o).textContent = e.target.value; renderPivots(); }));
+  document.querySelectorAll('#ptable th[data-sort]').forEach(th => th.onclick = () => {
+    PV.sort = [th.dataset.sort, PV.sort[0] === th.dataset.sort ? -PV.sort[1] : (th.dataset.sort === 'value' || th.dataset.sort === 'hops' ? 1 : -1)]; renderPivots(); });
+  document.getElementById('cmp').onclick = compare;
+  document.getElementById('p-reload').onclick = e => IO.busy(e.currentTarget, loadPivots);
+
+  document.getElementById('rerun').onclick = async () => {
+    if (!D) return;
+    if (D.summary.seed_type === 'report') return location.assign('/new');
+    if (!await IO.confirm('Re-investigate', `Run a fresh investigation of ${D.summary.seed}? A new case is created; this one is kept.`)) return;
+    try { const j = await IO.post('/api/investigate', {mode: 'ioc', iocs: D.summary.seed}); location.assign('/jobs/' + j.id); } catch (e) { IO.err(e); }
+  };
+  load().then(() => { show((location.hash || '#report').slice(1)); if (!ART.loaded) loadArticles(); });
+  IO.post(`/api/cases/${encodeURIComponent(CASE)}/warm`).catch(() => {});   // graph tab then opens instantly
+  window.addEventListener('hashchange', () => show((location.hash || '#report').slice(1)));
+})();
+</script>
+{% endblock %}

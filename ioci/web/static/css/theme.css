@@ -1,0 +1,675 @@
+/* InfraMapper design system: tokens (dark + light), sidebar, cards, metrics, severity, tables,
+   forms, buttons, modals. Page components live in app.css. */
+/* ═══════════════════ TOKENS ═══════════════════ */
+:root, [data-theme="dark"] {
+  --bg:            #090909;
+  --surface:       #111111;
+  --surface2:      #181818;
+  --surface3:      #1f1f1f;
+  --border:        #272727;
+  --border2:       #333333;
+  /* The two secondary text layers. They were #6d6d6d / #787878, which are
+     3.19:1 and 3.73:1 against the lightest surface — below WCAG AA (4.5:1)
+     for normal-size text. An audit of all 50 pages found 3,630 text
+     elements under threshold and *every single one* resolved to one of
+     these two values: labels, table headers, form hints, nav links, axis
+     ticks. Raised to clear AA on --surface3 (the worst case) while keeping
+     the ramp text > muted2 > muted intact. */
+  --muted:         #8f8f8f;
+  --muted2:        #a0a0a0;
+  --text:          #c8c8c8;
+  --text-bright:   #f0f0f0;
+  /* nav/brand only — not for decorative use */
+  --accent:        #94a3b8;
+  --accent-hi:     #cbd5e1;
+  --accent-glow:   rgba(148,163,184,.10);
+  --accent-dim:    #64748b;
+  --danger:        #f43f5e;
+  --danger-glow:   rgba(244,63,94,.10);
+  --success:       #10b981;
+  --success-glow:  rgba(16,185,129,.10);
+  --healthy:       #10b981;
+  --warning:       #f59e0b;
+  --warning-glow:  rgba(245,158,11,.10);
+  --sidebar-w:     224px;
+  --chart-grid:    #2e2e2e;
+  --chart-tick:    #9a9a9a;
+  --radius:        7px;
+  /* elevation + atmosphere — depth is carried by light, not color */
+  --bg-glow:       #131316;
+  --card-hi:       rgba(255,255,255,.022);
+  --card-hairline: rgba(255,255,255,.05);
+  --shadow-sm:     0 1px 2px rgba(0,0,0,.35);
+  --shadow-md:     0 10px 30px -12px rgba(0,0,0,.7);
+  --shadow-lg:     0 24px 60px -18px rgba(0,0,0,.75);
+  /* severity — the only colors that carry meaning */
+  --sev-critical:      #ff2d55;
+  --sev-crit-bg:       rgba(255,45,85,.11);
+  --sev-crit-border:   rgba(255,45,85,.28);
+  --sev-high:          #f43f5e;
+  --sev-high-bg:       rgba(244,63,94,.09);
+  --sev-high-border:   rgba(244,63,94,.24);
+  --sev-medium:        #f59e0b;
+  --sev-med-bg:        rgba(245,158,11,.09);
+  --sev-med-border:    rgba(245,158,11,.24);
+  --sev-low:           #60a5fa;
+  --sev-low-bg:        rgba(96,165,250,.09);
+  --sev-low-border:    rgba(96,165,250,.22);
+  --sev-info:          #7a7d92;
+  --sev-info-bg:       rgba(122,125,146,.08);
+  --sev-info-border:   rgba(122,125,146,.20);
+  /* ── hue palette ──────────────────────────────────────────────────
+     Identity/category tints (source badges, chart series, graph nodes).
+     Tuned to sit on THIS theme's surfaces — every value is contrast-
+     checked against --surface. Never hardcode a hue hex in a template:
+     a dark-tuned pastel disappears on the light background and vice
+     versa. Use these, or --text/--muted for plain copy. */
+  --c-blue:      #60a5fa;
+  --c-cyan:      #38bdf8;
+  --c-teal:      #2dd4bf;
+  --c-green:     #34d399;
+  --c-amber:     #fbbf24;
+  --c-orange:    #fb923c;
+  --c-red:       #fb7185;
+  --c-pink:      #f472b6;
+  --c-magenta:   #e879f9;
+  --c-violet:    #a78bfa;
+  --c-indigo:    #818cf8;
+  --c-slate:     #94a3b8;
+  /* graph / canvas surfaces — read from JS, see cssVar() */
+  --graph-label:      #c8c8c8;
+  --graph-label-dim:  #8a8a8a;
+  --graph-edge:       #5a5a68;
+  --graph-edge-dim:   #40404c;
+  --graph-node-dim:   #4b5563;
+  --graph-stroke:     #0b0b0e;
+  --graph-node-text:  #0b0b0e;
+  /* chart tooltip */
+  --tip-bg:     #1a1a23;
+  --tip-border: #33333f;
+  --tip-title:  #f0f0f0;
+  --tip-body:   #a8a8b8;
+
+  /* ── Compatibility aliases ────────────────────────────────────────
+     Names that pages were already using but which nothing ever defined.
+     `var(--teal)` with no fallback is not "teal or something close" — it
+     is an INVALID declaration, so the browser drops it and the property
+     inherits: 18 call sites were silently rendering body-grey, and 15
+     `font-family: var(--mono)` sites were rendering Inter instead of the
+     mono face the type system reserves for identifiers. Defining them
+     costs nothing and fixes every call site at once; they are aliases, so
+     the palette above stays the single source of truth. */
+  --teal:        var(--c-teal);
+  --purple:      var(--c-violet);
+  --ioc-domain:  var(--c-blue);
+  --fg:          var(--text);
+  --panel:       var(--surface);
+  --line:        var(--border);
+  --mono:        'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  /* Bootstrap ships a dark X as a background image, which is invisible on a
+     dark surface. Modals read this to invert it. */
+  --close-filter: invert(1) grayscale(100%) brightness(200%);
+}
+[data-theme="light"] {
+  --bg:           #f4f4f6;
+  --surface:      #ffffff;
+  --surface2:     #ededf1;
+  --surface3:     #e3e3e9;
+  --border:       #d2d2dc;
+  --border2:      #bcbcc8;
+  /* Same AA correction as the dark block, measured against --surface3
+     (#e3e3e9), the darkest light surface: #6f7189 was 3.73:1. */
+  --muted:        #5c5e75;
+  --muted2:       #505268;
+  --text:         #28293a;
+  --text-bright:  #0f1020;
+  --accent:       #475569;
+  --accent-hi:    #334155;
+  --accent-glow:  rgba(71,85,105,.08);
+  --accent-dim:   #334155;
+  --danger:       #be123c;
+  --danger-glow:  rgba(190,18,60,.09);
+  --success:      #047857;
+  --success-glow: rgba(4,120,87,.09);
+  --healthy:      #047857;
+  --warning:      #92400e;
+  --warning-glow: rgba(146,64,14,.09);
+  --chart-grid:   #d2d2dc;
+  --chart-tick:   #80829a;
+  --radius:       7px;
+  --bg-glow:       #ffffff;
+  --card-hi:       rgba(255,255,255,.5);
+  --card-hairline: rgba(15,16,32,.05);
+  --shadow-sm:     0 1px 2px rgba(24,26,42,.06);
+  --shadow-md:     0 12px 28px -14px rgba(24,26,42,.20);
+  --shadow-lg:     0 24px 56px -20px rgba(24,26,42,.24);
+  --sev-critical:      #dc2626;
+  --sev-crit-bg:       rgba(220,38,38,.09);
+  --sev-crit-border:   rgba(220,38,38,.25);
+  --sev-high:          #e11d48;
+  --sev-high-bg:       rgba(225,29,72,.08);
+  --sev-high-border:   rgba(225,29,72,.22);
+  --sev-medium:        #b45309;
+  --sev-med-bg:        rgba(180,83,9,.08);
+  --sev-med-border:    rgba(180,83,9,.22);
+  --sev-low:           #2563eb;
+  --sev-low-bg:        rgba(37,99,235,.08);
+  --sev-low-border:    rgba(37,99,235,.20);
+  --sev-info:          #6b7280;
+  --sev-info-bg:       rgba(107,114,128,.08);
+  --sev-info-border:   rgba(107,114,128,.20);
+  /* hue palette — same names, darkened so they hold contrast on white */
+  --c-blue:      #1d4ed8;
+  --c-cyan:      #0369a1;
+  --c-teal:      #0f766e;
+  --c-green:     #047857;
+  --c-amber:     #b45309;
+  --c-orange:    #c2410c;
+  --c-red:       #be123c;
+  --c-pink:      #be185d;
+  --c-magenta:   #a21caf;
+  --c-violet:    #6d28d9;
+  --c-indigo:    #4338ca;
+  --c-slate:     #475569;
+  --graph-label:      #28293a;
+  --graph-label-dim:  #5c5e75;
+  --graph-edge:       #8e90a6;
+  --graph-edge-dim:   #b0b2c2;
+  --graph-node-dim:   #9498ad;
+  --graph-stroke:     #ffffff;
+  --graph-node-text:  #ffffff;
+  --tip-bg:     #1f2030;
+  --tip-border: #3a3b50;
+  --tip-title:  #ffffff;
+  --tip-body:   #c9cbdd;
+  /* Aliases, re-pointed at the light values (see the dark block). */
+  --teal:        var(--c-teal);
+  --purple:      var(--c-violet);
+  --ioc-domain:  var(--c-blue);
+  --fg:          var(--text);
+  --panel:       var(--surface);
+  --line:        var(--border);
+  --mono:        'IBM Plex Mono', ui-monospace, SFMono-Regular, monospace;
+  --close-filter: none;   /* Bootstrap's own dark X is already correct here */
+}
+
+/* ═══════════════════ RESET ═══════════════════ */
+*, *::before, *::after { box-sizing: border-box; }
+html { font-size: 16px; height: 100%; }
+body { height: 100%; margin: 0; background: var(--bg); background-image: radial-gradient(135% 100% at 78% -25%, var(--bg-glow) 0%, transparent 55%); background-attachment: fixed; color: var(--text); font-family: 'Inter', system-ui, sans-serif; font-size: .875rem; line-height: 1.5; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; font-feature-settings: 'cv01','cv02','cv03','cv04'; transition: background .2s, color .2s; }
+/* IBM Plex Mono — code, preformatted text, and data utilities */
+code, pre, .mono, .ts, .num { font-family: 'IBM Plex Mono', monospace; font-variant-numeric: tabular-nums; }
+/* `code` was never given a colour, so it inherited Bootstrap's default pink
+   (#e685b5) in BOTH themes — 2.14:1 on the light background across ~99
+   elements. It marks an identifier, which is exactly what --accent-hi is
+   for, and it moves with the theme. */
+code { color: var(--accent-hi); }
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent-hi); }
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
+/* ═══════════════════ SIDEBAR ═══════════════════ */
+.sidebar {
+  position: fixed; top: 0; left: 0; bottom: 0;
+  width: var(--sidebar-w);
+  background: var(--surface); border-right: 1px solid var(--border);
+  display: flex; flex-direction: column; z-index: 200;
+  transition: transform .22s cubic-bezier(.4,0,.2,1), background .2s, border-color .2s;
+}
+body.sidebar-collapsed .sidebar { transform: translateX(-100%); }
+body.sidebar-collapsed .main-wrap { margin-left: 0; }
+.sidebar-toggle-btn {
+  position: fixed; top: .85rem; left: .85rem; z-index: 300;
+  width: 32px; height: 32px;
+  background: var(--surface); border: 1px solid var(--border2);
+  border-radius: var(--radius); color: var(--muted2);
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; font-size: .9rem;
+  box-shadow: 0 2px 12px rgba(0,0,0,.3);
+  transition: background .13s, color .13s;
+}
+.sidebar-toggle-btn:hover { background: var(--surface2); color: var(--text-bright); }
+body.sidebar-collapsed .sidebar-toggle-btn { display: flex; }
+.sidebar-collapse-btn {
+  background: none; border: none; color: var(--muted); cursor: pointer;
+  padding: 3px 7px; border-radius: 5px; font-size: .8125rem; line-height: 1;
+  transition: background .13s, color .13s;
+}
+.sidebar-collapse-btn:hover { background: var(--surface3); color: var(--text-bright); }
+
+/* brand */
+.sidebar-brand { padding: 1.25rem 1rem .85rem; flex-shrink: 0; }
+.brand-wordmark {
+  display: inline-flex; align-items: baseline; gap: .02em;
+  text-decoration: none; line-height: 1;
+  font-size: 1.28rem; letter-spacing: -.02em;
+  margin-bottom: .5rem;
+}
+.brand-wordmark:hover .bw-sight { color: var(--text-bright); }
+.brand-wordmark:hover .bw-dot { transform: scale(1.35); }
+.bw-intel { font-weight: 300; color: var(--muted2); }
+.bw-sight { font-weight: 700; color: var(--text-bright); letter-spacing: -.035em; transition: color .15s; }
+.bw-dot {
+  display: inline-block; width: 5px; height: 5px; margin-left: .18em;
+  border-radius: 50%; background: var(--accent);
+  box-shadow: 0 0 8px var(--accent-glow);
+  transition: transform .25s cubic-bezier(.4,0,.2,1);
+}
+.brand-tagline {
+  font-size: .585rem; font-weight: 600; line-height: 1.5;
+  text-transform: uppercase; letter-spacing: .15em;
+  color: var(--muted); margin: 0 0 .85rem;
+}
+.brand-rule { height: 1px; background: linear-gradient(90deg, var(--border2) 30%, transparent 100%); }
+/* Environment badge. Colour is meaning here, not decoration: the test
+   instance is pixel-identical to production and every destructive control
+   in it is real, so "you are not on production" is exactly the kind of
+   thing the operator has to act on. Production renders nothing at all. */
+.env-badge {
+  display: inline-flex; align-items: center; gap: .4em;
+  margin: 0 0 .8rem; padding: .2rem .5rem;
+  border: 1px solid var(--warning); border-radius: 3px;
+  background: var(--warning-glow); color: var(--warning);
+  font-size: .58rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .13em;
+}
+.env-badge .env-port { font-family: var(--mono); letter-spacing: .02em; opacity: .8; }
+
+/* nav */
+.sidebar-nav { flex: 1; padding: .5rem 0; overflow-y: auto; }
+.nav-section {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .75rem .8rem .22rem;
+  font-size: .625rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .14em; color: var(--muted);
+}
+.nav-section-dot { width: 4px; height: 4px; border-radius: 50%; background: var(--ns-color, var(--muted)); flex-shrink: 0; }
+.nav-section::after { content: ''; flex: 1; height: 1px; background: linear-gradient(90deg, var(--border2) 0%, transparent 100%); }
+.sidebar-nav .nav-link {
+  display: flex; align-items: center; gap: .5rem;
+  color: var(--muted2); padding: .42rem .8rem;
+  border-radius: var(--radius); margin: 1px .4rem;
+  font-size: .8125rem; font-weight: 500;
+  transition: color .15s, background .15s, border-color .15s, transform .15s;
+  border-left: 2px solid transparent; white-space: nowrap;
+}
+.sidebar-nav .nav-link i { font-size: .875rem; width: 15px; text-align: center; flex-shrink: 0; color: var(--muted); transition: color .15s; }
+.sidebar-nav .nav-link:hover { color: var(--text-bright); background: var(--surface2); transform: translateX(2px); }
+.sidebar-nav .nav-link:hover i { color: var(--muted2); }
+.sidebar-nav .nav-link.active { color: var(--accent-hi); background: var(--accent-glow); border-left-color: var(--accent); box-shadow: inset 0 0 0 1px var(--card-hairline); }
+.sidebar-nav .nav-link.active i { color: var(--accent-hi); }
+
+/* collapsible nav sections */
+.nav-section { cursor: pointer; user-select: none; }
+.nav-section::after { order: 1; }
+.nav-section-chevron {
+  order: 2; flex-shrink: 0;
+  font-size: .5625rem; color: var(--muted); margin-left: .3rem;
+  transition: transform .22s cubic-bezier(.4,0,.2,1);
+}
+.nav-section.section-collapsed .nav-section-chevron { transform: rotate(-90deg); }
+.nav-section-links {
+  overflow: hidden;
+  /* Must exceed the TALLEST group or its last links are silently clipped —
+     this is a cap, not a height, so there is no scrollbar to hint at it.
+     Infrastructure Intelligence is now the tallest (18 links + 4 bands).
+     Re-measure before adding to a group:
+     document.getElementById('section-infra').scrollHeight. */
+  max-height: 1200px;
+  transition: max-height .25s cubic-bezier(.4,0,.2,1);
+}
+/* A band groups modules INSIDE one nav group — Infrastructure Intelligence
+   holds four stages of one investigation, and eighteen flat links read as a
+   list rather than as a sequence. Quieter than a section header on purpose:
+   it labels, it does not compete. */
+.nav-band {
+  font-size: .5625rem; font-weight: 600; letter-spacing: .13em;
+  text-transform: uppercase; color: var(--muted2);
+  padding: .6rem .75rem .18rem 1.1rem;
+}
+.nav-section-links > .nav-band:first-child { padding-top: .25rem; }
+.nav-section-links.section-collapsed { max-height: 0; }
+
+/* sidebar bottom — theme toggle only */
+.sidebar-bottom {
+  flex-shrink: 0; border-top: 1px solid var(--border);
+  padding: .55rem .75rem;
+  display: flex; align-items: center; justify-content: space-between;
+}
+.theme-btn {
+  background: none; border: 1px solid var(--border2); border-radius: 5px;
+  color: var(--muted2); cursor: pointer; padding: 3px 8px;
+  font-size: .8125rem; line-height: 1.55; transition: all .13s;
+}
+.theme-btn:hover { background: var(--surface2); color: var(--text-bright); border-color: var(--muted); }
+
+/* ═══════════════════ MAIN ═══════════════════ */
+.main-wrap { margin-left: var(--sidebar-w); min-height: 100vh; padding: 1.6rem 1.8rem 2.5rem; transition: margin-left .22s cubic-bezier(.4,0,.2,1); }
+
+.page-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 1.5rem; }
+.page-title  { font-size: 1.15rem; font-weight: 700; color: var(--text-bright); letter-spacing: -.025em; margin: 0; line-height: 1.25; }
+.page-title i { color: var(--accent); }
+.page-subtitle { font-size: .75rem; color: var(--muted); margin-top: 4px; line-height: 1.4; }
+
+/* ═══════════════════ CARDS ═══════════════════ */
+/* Depth comes from a faint overhead light: a hairline highlight on the top edge
+   and a soft resting shadow, so surfaces read as lifted without any extra color. */
+.cti-card {
+  background: linear-gradient(180deg, var(--card-hi), transparent 46%), var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm);
+  transition: background .2s, border-color .2s, box-shadow .2s, transform .2s;
+}
+.stat-card {
+  background: linear-gradient(180deg, var(--card-hi), transparent 50%), var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--stat-color, var(--accent));
+  border-radius: var(--radius); padding: .9rem 1rem;
+  position: relative; overflow: hidden;
+  box-shadow: var(--shadow-sm);
+  transition: box-shadow .2s, background .2s, transform .2s, border-color .2s;
+}
+.stat-card::after {
+  content: ''; position: absolute; inset: 0 0 auto 0; height: 1px;
+  background: linear-gradient(90deg, var(--card-hairline), transparent 60%);
+  pointer-events: none;
+}
+.stat-card:hover { box-shadow: var(--shadow-md); transform: translateY(-2px); border-color: var(--border2); }
+.stat-card .stat-bg-icon { position: absolute; right: .85rem; top: 50%; transform: translateY(-50%); font-size: 2.6rem; opacity: .22; color: var(--stat-color, var(--accent)); pointer-events: none; }
+.stat-label { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: .32rem; }
+.stat-val   { font-family: 'IBM Plex Mono', monospace; font-size: 1.8rem; font-weight: 600; line-height: 1; color: var(--stat-color, var(--accent)); font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.card-label { font-size: .6875rem; font-weight: 600; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); margin-bottom: .6rem; }
+
+/* ═══════════════════ METRICS ═══════════════════
+   Measured values, wherever they appear. Three rules hold this together:
+
+   1. Figures are set in Martian Mono at weight 300. Large + light reads as
+      confidence; large + bold reads as a stock dashboard. Never bold a figure.
+   2. A figure is `--text-bright` unless the value needs someone to act on it,
+      and then it is amber (attention) or red (act) — those two, nothing else.
+      Category never gets a colour: an amber credential count and a violet news
+      count taught the reader that colour means nothing.
+   3. Status is a word, not a pill. `.metric-state` sets it in the severity
+      colour at label size; no background, no border, no radius.
+
+   Spacing comes off the 4px scale below so a metric block lines up with the
+   panels around it without hand-tuned margins. */
+:root {
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-10: 40px;
+}
+.figure {
+  font-family: 'Martian Mono', 'IBM Plex Mono', monospace;
+  font-weight: 300; line-height: 1;
+  font-variant-numeric: tabular-nums slashed-zero;
+  color: var(--text-bright);
+  letter-spacing: -.03em; white-space: nowrap;
+}
+.figure-hero  { font-size: clamp(2.8rem, 5vw, 4.4rem); letter-spacing: -.06em; }
+.figure-lg    { font-size: 1.32rem; }
+.figure-sm    { font-size: 1.05rem; }
+.figure-quiet { color: var(--muted2); }        /* a zero that is good news */
+.figure-warn  { color: var(--warning); }
+.figure-act   { color: var(--sev-critical); }
+.metric-label {
+  display: block; font-size: .6rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .14em;
+  color: var(--muted); white-space: nowrap;
+}
+.metric-sub  { display: block; font-size: .68rem; color: var(--muted); white-space: nowrap; }
+.metric-state {
+  font-size: .68rem; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .18em;
+  color: var(--muted2);
+}
+.metric-state.is-warn { color: var(--warning); }
+.metric-state.is-act  { color: var(--sev-critical); }
+
+/* The metric bar is the platform-wide replacement for a row of equal boxes:
+   ONE surface, divided by hairlines, with the page's headline number given
+   real size (.metric-primary) instead of every number shouting equally. */
+.metric-bar {
+  display: flex; flex-wrap: wrap;
+  background: linear-gradient(180deg, var(--card-hi), transparent 40%), var(--surface);
+  border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: var(--shadow-sm); overflow: hidden;
+}
+.metric {
+  flex: 1 1 0; min-width: 150px;
+  padding: var(--s-4) var(--s-5);
+  border-left: 1px solid var(--border);
+  background: none; border-top: 0; border-right: 0; border-bottom: 0;
+  font: inherit; color: inherit; text-align: left; text-decoration: none;
+  transition: background .16s ease;
+}
+.metric-bar > .metric:first-child { border-left: none; }
+/* Figures never wrap; a status word too long for its cell truncates rather
+   than breaking the row's baseline grid. */
+.metric > .figure { display: block; margin: var(--s-2) 0 var(--s-1); overflow: hidden; text-overflow: ellipsis; }
+.metric-primary { flex: 1.4 1 0; }
+.metric-primary > .figure { font-size: 2.1rem; letter-spacing: -.045em; }
+/* Only metrics that go somewhere respond to the pointer — a hover state on a
+   plain readout is decoration. */
+a.metric, button.metric, .metric[onclick] { cursor: pointer; }
+a.metric:hover, button.metric:hover, .metric[onclick]:hover { background: var(--surface2); }
+a.metric:hover .metric-label, button.metric:hover .metric-label,
+.metric[onclick]:hover .metric-label { color: var(--muted2); }
+a.metric .metric-label::after, button.metric .metric-label::after,
+.metric[onclick] .metric-label::after {
+  content: '→'; margin-left: .4em; display: inline-block;
+  opacity: 0; transform: translateX(-3px);
+  transition: opacity .16s ease, transform .16s ease;
+}
+a.metric:hover .metric-label::after, button.metric:hover .metric-label::after,
+.metric[onclick]:hover .metric-label::after { opacity: .55; transform: translateX(0); }
+a.metric:focus-visible, button.metric:focus-visible, .metric[onclick]:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
+/* A metric doubling as a filter marks its selected state the way a tab does —
+   filled cell + an underline — instead of borrowing a category colour. */
+.metric.active { background: var(--surface2); box-shadow: inset 0 -2px 0 var(--text-bright); }
+.metric.active .metric-label { color: var(--text-bright); }
+.metric.active .metric-sub   { color: var(--muted2); }
+/* Pages toggle a metric's severity through this, never by setting a colour:
+   'ok' means no colour at all, because a healthy reading has nothing to say. */
+.metric.is-warn > .figure { color: var(--warning); }
+.metric.is-act  > .figure { color: var(--sev-critical); }
+/* Numbers still being recounted for a new filter: they recede rather than
+   blanking, so the bar doesn't flicker on every keystroke. */
+.metric-bar.is-loading .figure { opacity: .35; transition: opacity .2s ease; }
+@media (max-width: 720px) { .metric { flex-basis: 50%; } }
+
+/* Legacy stat cards. Any page still using the old markup inherits the new
+   rules rather than the old chrome: no category border, no ghost icon, no
+   coloured figure. Convert markup to .metric-bar when the page is touched. */
+.stat-card { border-left-width: 1px; border-left-color: var(--border); }
+.stat-card:hover { transform: none; }
+.stat-card .stat-bg-icon { display: none; }
+.stat-card .stat-val {
+  font-family: 'Martian Mono', 'IBM Plex Mono', monospace;
+  font-weight: 300; color: var(--text-bright); letter-spacing: -.03em;
+}
+
+/* ═══════════════════ SEVERITY ═══════════════════ */
+.badge-sev-critical { background: var(--sev-crit-bg)!important; color: var(--sev-critical)!important; border: 1px solid var(--sev-crit-border)!important; }
+.badge-sev-high     { background: var(--sev-high-bg)!important; color: var(--sev-high)!important;     border: 1px solid var(--sev-high-border)!important; }
+.badge-sev-medium   { background: var(--sev-med-bg)!important;  color: var(--sev-medium)!important;   border: 1px solid var(--sev-med-border)!important; }
+.badge-sev-low      { background: var(--sev-low-bg)!important;  color: var(--sev-low)!important;      border: 1px solid var(--sev-low-border)!important; }
+.badge-sev-info     { background: var(--sev-info-bg)!important; color: var(--sev-info)!important;     border: 1px solid var(--sev-info-border)!important; }
+.sev-border-critical { border-left: 3px solid var(--sev-critical) !important; }
+.sev-border-high     { border-left: 3px solid var(--sev-high)     !important; }
+.sev-border-medium   { border-left: 3px solid var(--sev-medium)   !important; }
+.sev-border-low      { border-left: 3px solid var(--sev-low)      !important; }
+
+/* ═══════════════════ ACTOR TAGS (neutral) ══════════════════════ */
+.ioc-tag, .ioc-ip, .ioc-domain, .ioc-hash, .ioc-email, .ioc-phone {
+  display: inline-flex; align-items: center; gap: .2rem;
+  font-family: 'IBM Plex Mono', monospace; font-size: .6875rem; font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  padding: .07rem .34rem; border-radius: 3px;
+  border: 1px solid var(--border2); color: var(--muted2);
+  background: var(--surface2); white-space: nowrap;
+}
+
+/* ═══════════════════ ALERT TYPE BADGES ═══════════════════ */
+.badge-keyword      { background: rgba(148,163,184,.14)!important;  color:#cbd5e1!important; border:1px solid rgba(148,163,184,.28)!important; }
+.badge-ransomware   { background: rgba(255,45,85,.14)!important;   color:#ff6b85!important; border:1px solid rgba(255,45,85,.30)!important; }
+.badge-full_monitor { background: rgba(16,185,129,.11)!important;  color:#34d399!important; border:1px solid rgba(16,185,129,.24)!important; }
+.badge-ulp          { background: rgba(245,158,11,.11)!important;  color:#fbbf24!important; border:1px solid rgba(245,158,11,.24)!important; }
+.badge-ulp_domain   { background: rgba(56,189,248,.11)!important;  color:#7dd3fc!important; border:1px solid rgba(56,189,248,.24)!important; }
+.badge-excluded     { background: rgba(74,101,128,.18)!important;  color:var(--muted2)!important; border:1px solid var(--border2)!important; }
+/* "Monitored — not joined": a channel read without being a member. A state,
+   not a severity, so it takes the informational sky tone rather than any of
+   the alert colours — distinct from the neutral "not actioned yet". */
+.badge-monitored    { background: rgba(56,189,248,.11)!important;  color:#7dd3fc!important; border:1px solid rgba(56,189,248,.24)!important; }
+
+[data-theme="light"] .badge-keyword      { background: rgba(71,85,105,.10)!important;   color:#334155!important; border:1px solid rgba(71,85,105,.22)!important; }
+[data-theme="light"] .badge-ransomware   { background: rgba(225,29,72,.08)!important;  color:#be123c!important; border:1px solid rgba(225,29,72,.2)!important; }
+[data-theme="light"] .badge-full_monitor { background: rgba(5,150,105,.08)!important;  color:#047857!important; border:1px solid rgba(5,150,105,.2)!important; }
+[data-theme="light"] .badge-ulp          { background: rgba(180,83,9,.08)!important;   color:#92400e!important; border:1px solid rgba(180,83,9,.2)!important; }
+[data-theme="light"] .badge-ulp_domain   { background: rgba(3,105,161,.08)!important;  color:#0369a1!important; border:1px solid rgba(3,105,161,.2)!important; }
+[data-theme="light"] .badge-monitored    { background: rgba(3,105,161,.08)!important;  color:#0369a1!important; border:1px solid rgba(3,105,161,.2)!important; }
+
+/* ═══════════════════ TABLES ═══════════════════ */
+.table { color: var(--text); }
+.table > :not(caption) > * > * { background-color: transparent !important; border-color: var(--border) !important; padding-top: .52rem; padding-bottom: .52rem; }
+.table-hover tbody tr:hover > td { background: var(--surface2) !important; cursor: pointer; }
+.table thead th { font-size: .6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: .09em; color: var(--muted2); border-bottom: 1px solid var(--border2) !important; }
+.msg-preview { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 240px; font-size: .8125rem; color: var(--muted); }
+.btn-icon    { padding: .15rem .4rem; font-size: .75rem; }
+
+.dataTables_wrapper .dataTables_filter input,
+.dataTables_wrapper .dataTables_length select { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; border-radius: 6px !important; font-size: .875rem !important; }
+.dataTables_wrapper .dataTables_info,
+.dataTables_wrapper .dataTables_paginate { color: var(--muted) !important; font-size: .8125rem !important; }
+.dataTables_wrapper .paginate_button { color: var(--muted) !important; border-radius: 5px !important; }
+.dataTables_wrapper .paginate_button.current,
+.dataTables_wrapper .paginate_button.current:hover { background: var(--accent-dim) !important; border-color: var(--accent-dim) !important; color: #fff !important; }
+.dataTables_wrapper .paginate_button:hover { background: var(--surface2) !important; border-color: var(--border2) !important; color: var(--text-bright) !important; }
+
+/* ═══════════════════ FORMS ═══════════════════ */
+.form-control, .form-select { background: var(--surface2) !important; border-color: var(--border) !important; color: var(--text) !important; border-radius: 6px !important; transition: border-color .13s; }
+.form-control:focus, .form-select:focus { border-color: var(--accent) !important; box-shadow: 0 0 0 3px var(--accent-glow) !important; }
+.form-control::placeholder { color: var(--muted) !important; }
+label { color: var(--muted2) !important; }
+.form-text { color: var(--muted) !important; }
+/* Checkboxes/radios ship a light-mode chrome: a white box on a white page.
+   On these surfaces the unchecked state was a near-invisible outline. */
+.form-check-input { background-color: var(--surface3); border-color: var(--border2); }
+.form-check-input:checked { background-color: var(--accent-dim); border-color: var(--accent-dim); }
+.form-check-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+/* Bootstrap draws the modal dismiss as a dark SVG, which on a dark surface
+   is a black X on near-black — present, clickable, invisible. 34 close
+   buttons across the platform had it. --close-filter is `none` in light. */
+.btn-close { filter: var(--close-filter); opacity: .65; }
+.btn-close:hover { opacity: 1; }
+
+/* ═══════════════════ BUTTONS ═══════════════════ */
+.btn-primary { background: var(--accent-dim) !important; border-color: transparent !important; color: #fff !important; }
+.btn-primary:hover { background: var(--accent) !important; }
+.btn-outline-secondary { border-color: var(--border2) !important; color: var(--muted2) !important; }
+.btn-outline-secondary:hover { background: var(--surface2) !important; color: var(--text-bright) !important; border-color: var(--muted) !important; }
+/* --success is a light mint on dark; Bootstrap's white label on it measured
+   2.54:1. The page background is the readable ink here. */
+.btn-success { background: var(--success) !important; border-color: transparent !important; color: var(--bg) !important; }
+.btn-success:hover { filter: brightness(1.08); }
+.btn-outline-danger { border-color: var(--danger) !important; color: var(--danger) !important; }
+.btn-outline-danger:hover { background: var(--danger-glow) !important; }
+/* Bootstrap's own primary (#0d6efd) was still showing through on outline
+   buttons and text utilities — its default palette is tuned for a white
+   page and measured 4.2:1 here. These are the last light-mode leftovers the
+   contrast audit turned up. */
+.btn-outline-primary { border-color: var(--accent) !important; color: var(--accent-hi) !important; }
+.btn-outline-primary:hover { background: var(--accent-glow) !important; color: var(--text-bright) !important; }
+.btn-outline-success { border-color: var(--success) !important; color: var(--success) !important; }
+.btn-outline-warning { border-color: var(--warning) !important; color: var(--warning) !important; }
+.btn-outline-info    { border-color: var(--c-cyan) !important; color: var(--c-cyan) !important; }
+.text-primary { color: var(--accent-hi) !important; }
+.text-danger  { color: var(--danger) !important; }
+.text-success { color: var(--success) !important; }
+.text-warning { color: var(--warning) !important; }
+.text-info    { color: var(--c-cyan) !important; }
+.text-muted   { color: var(--muted) !important; }
+
+/* Bootstrap components the platform uses but never restyled, so they were
+   still painting from Bootstrap's own palette: pagination links, tab navs
+   and list groups. Each showed up in the contrast audit. */
+.pagination .page-link {
+  background: var(--surface2); border-color: var(--border);
+  color: var(--text);
+}
+.pagination .page-link:hover { background: var(--surface3); color: var(--text-bright); border-color: var(--border2); }
+/* A filled slate chip cannot carry readable text in either theme (white on
+   --accent-dim measures 4.18 dark), so the active page is marked with a
+   surface lift + accent border instead of a fill. */
+.pagination .page-item.active .page-link { background: var(--surface3); border-color: var(--accent); color: var(--text-bright); }
+.pagination .page-item.disabled .page-link { background: var(--surface); color: var(--muted); border-color: var(--border); }
+.nav-tabs { border-bottom-color: var(--border); }
+.nav-tabs .nav-link { color: var(--muted2); border-color: transparent; }
+.nav-tabs .nav-link:hover { color: var(--text-bright); border-color: var(--border2); }
+.nav-tabs .nav-link.active { color: var(--text-bright); background: var(--surface2); border-color: var(--border) var(--border) var(--surface2); }
+.list-group-item { background: var(--surface); border-color: var(--border); color: var(--text); }
+.dropdown-menu { background: var(--surface); border-color: var(--border2); }
+.dropdown-item { color: var(--text); }
+.dropdown-item:hover, .dropdown-item:focus { background: var(--surface2); color: var(--text-bright); }
+.dropdown-divider { border-color: var(--border); }
+
+/* ══════════ INLINE SANDBOX RESULT (window.sandboxScan) ══════════
+   Rendered into whatever container a page hands the helper, so it carries
+   its own surface and cannot inherit a host panel's text colour. */
+.sbx-box { border: 1px solid var(--border); border-radius: var(--radius);
+           background: var(--surface2); overflow: hidden; margin-top: .4rem; }
+.sbx-note { padding: .5rem .7rem; font-size: .72rem; color: var(--muted2); }
+.sbx-note.bad  { color: var(--danger); }
+.sbx-note.warn { color: var(--warning); }
+.sbx-note code { color: var(--accent-hi); }
+.sbx-shot { display: block; background: var(--bg); line-height: 0; }
+/* Capped so a full-page render cannot push the rest of a drawer off screen;
+   the anchor opens the original PNG at full size. */
+.sbx-shot img { width: 100%; max-height: 260px; object-fit: cover;
+                object-position: top center; display: block; }
+.sbx-meta { display: flex; align-items: center; gap: .5rem;
+            padding: .45rem .7rem; font-size: .7rem; color: var(--muted2);
+            border-top: 1px solid var(--border); }
+.sbx-meta .sbx-title { color: var(--text); overflow: hidden;
+                       text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.sbx-meta a { margin-left: auto; white-space: nowrap; }
+
+/* ═══════════════════ MODAL ═══════════════════ */
+.modal-content { background: var(--surface) !important; border: 1px solid var(--border2) !important; border-radius: 10px !important; box-shadow: 0 24px 80px rgba(0,0,0,.6) !important; }
+.modal-header, .modal-footer { border-color: var(--border) !important; }
+.modal-title { color: var(--text-bright) !important; font-size: .9375rem !important; font-weight: 600 !important; }
+.dropdown-menu { background: var(--surface) !important; border-color: var(--border) !important; }
+.dropdown-item { color: var(--text) !important; }
+.dropdown-item:hover { background: var(--surface2) !important; color: var(--text-bright) !important; }
+
+/* ═══════════════════ MISC ═══════════════════ */
+pre.msg-full { white-space: pre-wrap; word-break: break-word; font-size: .8125rem; line-height: 1.6; background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); padding: .9rem; color: var(--text); }
+.toast { border-radius: 8px !important; }
+.chart-wrap { background: linear-gradient(180deg, var(--card-hi), transparent 46%), var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 1rem 1.1rem; box-shadow: var(--shadow-sm); }
+.chart-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: .75rem; }
+.chart-title  { font-size: .75rem; font-weight: 600; text-transform: uppercase; letter-spacing: .09em; color: var(--muted); }
+
+/* ═══════════════════ POLISH ═══════════════════ */
+/* Buttons gain a subtle lift + press so actions feel physical. */
+.btn { transition: background .15s, border-color .15s, color .15s, box-shadow .15s, transform .1s; }
+.btn:active { transform: translateY(1px); }
+.btn-primary { box-shadow: var(--shadow-sm); }
+.btn-primary:hover { box-shadow: var(--shadow-md); }
+/* Keyboard focus is always visible and consistent, never the browser default. */
+a:focus-visible, .btn:focus-visible, .nav-link:focus-visible,
+.form-control:focus-visible, .form-select:focus-visible, [tabindex]:focus-visible {
+  outline: none !important;
+  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent-dim) !important;
+  border-radius: 6px;
+}
+/* Cards lift on interaction, but only where the page opts in via .card-hover. */
+.cti-card.card-hover:hover { box-shadow: var(--shadow-md); border-color: var(--border2); transform: translateY(-2px); }
+/* Respect reduced-motion: keep state changes, drop movement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .001ms !important; transition-duration: .001ms !important; scroll-behavior: auto !important; }
+  .sidebar-nav .nav-link:hover, .stat-card:hover, .cti-card.card-hover:hover, .btn:active { transform: none !important; }
+}

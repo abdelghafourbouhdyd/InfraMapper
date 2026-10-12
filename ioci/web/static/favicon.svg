@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 110 32">
+  <!-- Background -->
+  <rect width="110" height="32" rx="6" fill="#111111"/>
+  <rect width="110" height="32" rx="6" fill="none" stroke="#2a2a2a" stroke-width="1"/>
+
+  <!-- "Intel" — light weight, muted -->
+  <text x="8" y="22"
+        font-family="Inter, system-ui, sans-serif"
+        font-size="17" font-weight="300"
+        fill="#787878" letter-spacing="-0.3">Intel</text>
+
+  <!-- "Sight" — bold, bright -->
+  <text x="55" y="22"
+        font-family="Inter, system-ui, sans-serif"
+        font-size="17" font-weight="700"
+        fill="#f0f0f0" letter-spacing="-0.6">Sight</text>
+</svg>

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div><h1 class="page-title"><i class="bi bi-hourglass-split me-2"></i>Jobs</h1>
+    <div class="page-subtitle">Investigations, report triage, report ingestion and re-indexing. One runs at a time; the others queue.</div></div>
+  <a class="btn btn-sm btn-primary" href="/new"><i class="bi bi-plus-lg me-1"></i>New investigation</a>
+</div>
+<div class="panel"><div class="panel-body flush tbl-wrap"><table class="table table-hover mb-0">
+  <thead><tr><th>State</th><th>Job</th><th>Kind</th><th>Created</th><th>Duration</th><th>Result</th></tr></thead><tbody id="rows"></tbody></table></div></div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+  const {esc} = IO;
+  const dur = j => { if (!j.started) return '—'; const s = Math.round(((j.finished ? IO.parse(j.finished) : new Date()) - IO.parse(j.started)) / 1000); return s < 60 ? s + 's' : Math.floor(s / 60) + 'm ' + (s % 60) + 's'; };
+  async function load() {
+    const r = await IO.get('/api/jobs').catch(IO.err);
+    if (!r) return;
+    document.getElementById('rows').innerHTML = r.items.map(j => `<tr onclick="location='/jobs/${j.id}'"><td>${IO.jobState(j.state)}</td>
+      <td class="mono small">${esc(IO.trunc(j.label, 80))}</td><td class="small">${esc(j.kind)}</td><td class="small">${IO.fmt(j.created)}</td><td class="mono small">${dur(j)}</td>
+      <td class="small" onclick="event.stopPropagation()">${j.case ? `<a href="/cases/${esc(j.case)}">open case →</a>` : j.error ? `<span class="text-danger">${esc(IO.trunc(j.error, 90))}</span>` : ''}</td></tr>`).join('')
+      || '<tr><td colspan="6" class="empty-state">No jobs yet.</td></tr>';
+    if (r.items.some(j => j.state === 'running' || j.state === 'queued')) setTimeout(load, 3000);
+  }
+  load();
+})();
+</script>
+{% endblock %}

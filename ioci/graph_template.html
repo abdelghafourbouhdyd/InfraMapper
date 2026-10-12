@@ -1,0 +1,1447 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>__TITLE__</title>
+<script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Type system: three roles.
+     Inter        = prose and controls
+     IBM Plex Mono = indicators (domains, hashes, IPs, queries): the things an analyst copies
+     Martian Mono  = the instrument layer: labels, tabs, badges, counts, dates -->
+<link href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&family=Martian+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root, :root[data-theme="dark"] {
+    --bg:#0e0f0d; --panel:#151613; --panel-2:#1b1c18; --line:#2a2b26; --line-2:#3b3c35;
+    --fg:#e8e4d8; --fg-2:#bdb8aa; --muted:#8a8679; --accent:#e5a23c; --lead:#5bb8cc; --accent-dim:#e5a23c33; --on-accent:#16120a;
+    --bad:#d4553f; --bad-text:#ef7a66; --warn:#d88a33; --ok:#7f9f6a; --info:#7b9fb8; --rep:#cf7a9c;
+    --grid:#ffffff0f; --shadow:0 12px 32px #000000a0, 0 1px 0 #ffffff08 inset; color-scheme:dark;
+  }
+  :root[data-theme="light"] {
+    --bg:#f3f2ee; --panel:#ffffff; --panel-2:#f8f7f3; --line:#e5e3dc; --line-2:#cfccc2;
+    --fg:#1d1c18; --fg-2:#45433c; --muted:#77746a; --accent:#b0691a; --lead:#1f7a8c; --accent-dim:#b0691a2b; --on-accent:#ffffff;
+    --bad:#c2412d; --bad-text:#b3371f; --warn:#b8641a; --ok:#4b7a3a; --info:#35698f; --rep:#a8466f;
+    --grid:#00000014; --shadow:0 1px 2px #0000000d, 0 10px 28px #0000001c; color-scheme:light;
+  }
+  :root {
+    --sans:"Inter", system-ui, "Segoe UI", sans-serif;
+    --label:"Martian Mono", "IBM Plex Mono", ui-monospace, monospace;
+    --mono:"IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing:border-box; }
+  ::selection { background:var(--accent); color:var(--on-accent); }
+  /* Inter cv05 / cv08: tailed l and serifed I, so l / I / 1 never blur together in an indicator */
+  body { margin:0; background:var(--bg); color:var(--fg); font:13.5px/1.6 var(--sans); height:100vh; overflow:hidden;
+         -webkit-font-smoothing:antialiased; font-feature-settings:"cv05","cv08","cv11","ss03"; transition:background .2s; }
+  #graph { position:fixed; inset:0; background:radial-gradient(circle at 1px 1px, var(--grid) 1px, transparent 0) 0 0/22px 22px, var(--bg); }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:2px; box-shadow:var(--shadow); }
+  /* viewfinder corners: the floating panels frame the graph like a lens */
+  .card::before, #explore::after, #entity::after { content:""; position:absolute; width:12px; height:12px; pointer-events:none; }
+  .card::before { top:-1px; left:-1px; border-top:2px solid var(--accent); border-left:2px solid var(--accent); }
+  #explore::after, #entity::after { bottom:-1px; right:-1px; border-bottom:2px solid var(--line-2); border-right:2px solid var(--line-2); }
+  #explore { position:fixed; top:16px; left:16px; width:410px; max-height:calc(100vh - 32px); display:flex; flex-direction:column; z-index:3; }
+  #explore .panes { overflow:auto; flex:1; min-height:0; }
+  #explore.collapsed .tabs, #explore.collapsed .panes { display:none; }
+  #explore.collapsed header { border-bottom:0; }
+  header { padding:18px 20px 16px; border-bottom:1px solid var(--line); position:relative; }
+  .icon-btn { background:none; border:1px solid transparent; color:var(--muted); width:28px; height:28px; border-radius:2px; cursor:pointer;
+              display:inline-grid; place-items:center; padding:0; }
+  .icon-btn:hover { color:var(--fg); background:var(--panel-2); border-color:var(--line); }
+  .icon-btn.on { color:var(--accent); }
+  .icon-btn svg { width:16px; height:16px; fill:none; stroke:currentColor; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
+  header .icon-btn { position:absolute; top:12px; right:12px; }
+  #entity { position:fixed; top:16px; right:16px; width:450px; max-height:calc(100vh - 96px); display:flex; flex-direction:column; z-index:3; }
+  #entity[hidden] { display:none; }
+  .ent-head { display:flex; align-items:center; gap:14px; padding:16px 14px 16px 20px; border-bottom:1px solid var(--line); }
+  .ent-head img { width:40px; height:40px; flex:none; }
+  .ent-head .t { flex:1; min-width:0; }
+  .ent-head .ty { font:500 9.5px/1 var(--label); letter-spacing:.1em; text-transform:uppercase; color:var(--accent); margin-bottom:7px; }
+  .ent-head .nm { font:500 15px/1.35 var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #entity #p-node { overflow:auto; padding:0 0 12px; }
+  .ent-top { padding:14px 20px 8px; }
+  details.sec { border-top:1px solid var(--line); }
+  details.sec > summary { list-style:none; cursor:pointer; padding:14px 20px; display:flex; align-items:center; gap:10px;
+                          font:400 10px/1 var(--label); letter-spacing:.08em; text-transform:uppercase; color:var(--fg-2); user-select:none; }
+  details.sec > summary::-webkit-details-marker { display:none; }
+  details.sec > summary::before { content:""; width:6px; height:6px; border-right:1.5px solid var(--muted); border-bottom:1.5px solid var(--muted);
+                                  transform:rotate(-45deg); transition:transform .15s; margin-right:2px; }
+  details.sec[open] > summary::before { transform:rotate(45deg); border-color:var(--accent); }
+  details.sec > summary:hover { background:var(--panel-2); color:var(--fg); }
+  details.sec > .body { padding:0 20px 16px; }
+  #controls { position:fixed; right:16px; bottom:16px; display:flex; align-items:center; gap:2px; padding:4px; z-index:3; }
+  #controls .sep { width:1px; height:18px; background:var(--line); margin:0 4px; }
+  #controls .icon-btn { width:36px; height:36px; }
+  #controls .icon-btn svg { width:17px; height:17px; }
+  /* wordmark: reticle + "Infra" in the instrument face, "Mapper" in light Inter, the view name trailing */
+  header .eyebrow { display:flex; align-items:center; gap:9px; margin-bottom:12px; color:var(--fg-2); font:300 13px/1 var(--sans); letter-spacing:-.005em; }
+  header .eyebrow::before { content:""; width:11px; height:11px; flex:none; border-radius:50%; border:1.5px solid var(--accent);
+                            background:radial-gradient(circle, var(--accent) 0 1.6px, transparent 2.2px); }
+  header .eyebrow b { font:500 11px/1 var(--label); letter-spacing:.04em; color:var(--fg); margin-right:-4px; }
+  header .eyebrow .view { font:400 9.5px/1 var(--label); letter-spacing:.1em; text-transform:uppercase; color:var(--accent);
+                          padding-left:9px; border-left:1px solid var(--line-2); }
+  header h1 { margin:0 0 8px; font:500 16px/1.4 var(--mono); word-break:break-all; letter-spacing:-.01em; }
+  header .meta { color:var(--muted); font:300 10.5px/1.6 var(--label); letter-spacing:-.01em; }
+  .tabs { display:flex; border-bottom:1px solid var(--line); padding:0 10px; background:var(--panel-2); }
+  .tabs button { flex:auto; background:none; border:0; color:var(--muted); padding:14px 6px 13px; cursor:pointer; white-space:nowrap;
+                 font:400 9.5px/1 var(--label); letter-spacing:.06em; text-transform:uppercase; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs button:hover { color:var(--fg-2); }
+  .tabs button.on { color:var(--fg); font-weight:500; border-bottom-color:var(--accent); }
+  .pane { display:none; padding:18px 20px 22px; }
+  .pane.on { display:block; }
+  .panes::-webkit-scrollbar, #p-node::-webkit-scrollbar { width:8px; }
+  .panes::-webkit-scrollbar-thumb, #p-node::-webkit-scrollbar-thumb { background:var(--line-2); border-radius:4px; }
+  input[type=search], select { width:100%; padding:8px 10px; background:var(--bg); border:1px solid var(--line-2); color:var(--fg);
+                               border-radius:2px; margin-bottom:14px; font:13px var(--mono); outline:none; padding:10px 12px; }
+  input[type=search]::placeholder { font-family:var(--sans); color:var(--muted); }
+  input[type=search]:focus, select:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+  select { padding:6px 8px; margin-bottom:6px; }
+  input[type=checkbox] { accent-color:var(--accent); }
+  .types label { display:flex; align-items:center; gap:10px; padding:7px 0; cursor:pointer; border-bottom:1px dotted var(--line); }
+  .dot { width:10px; height:10px; border-radius:1px; display:inline-block; flex:none; }
+  .types .n { margin-left:auto; color:var(--muted); font:300 11px var(--label); font-variant-numeric:tabular-nums; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  td, th { text-align:left; padding:9px 8px 9px 0; border-bottom:1px solid var(--line); vertical-align:top; word-break:break-all; }
+  td { font-variant-numeric:tabular-nums; }
+  th { color:var(--muted); font:400 9px var(--label); letter-spacing:.08em; text-transform:uppercase; }
+  /* property keys are identifiers (vt_malicious, first_seen): kept in their own case, in the indicator face */
+  .k { color:var(--muted); width:36%; word-break:normal; font:400 11.5px/1.5 var(--mono); padding-top:10px; }
+  code, pre, .copy { font-family:var(--mono); }
+  code { background:var(--panel-2); border:1px solid var(--line); padding:1px 6px; border-radius:2px; font-size:12.5px; }
+  code.copy { display:block; padding:11px 14px; font-size:14px; line-height:1.5; color:var(--fg); border-left:2px solid var(--accent); word-break:break-all; }
+  code.copy:hover { background:var(--bg); }
+  .broad { color:var(--muted); text-decoration:line-through; }
+  tr.refine td:first-child { border-left:2px solid var(--accent); padding-left:10px; }
+  tr.refine code { font-size:11.5px; }
+  #p-pivots th, #p-pivots td:last-child { white-space:nowrap; word-break:normal; text-align:right; font-family:var(--label); }
+  #p-pivots td:last-child { font-weight:300; font-size:11.5px; }
+  #p-pivots th:nth-child(-n+2) { text-align:left; }
+  #p-pivots .hint, #p-hunt .hint { word-break:normal; margin-top:4px; }
+  #p-pivots code { display:block; white-space:pre-wrap; word-break:break-all; }
+  .badge { display:inline-block; padding:4px 7px 3px; border-radius:2px; font:400 9.5px/1.4 var(--label); letter-spacing:.04em; text-transform:uppercase;
+           border:1px solid var(--line-2); color:var(--fg-2); background:transparent; vertical-align:1px; }
+  .badge.bad { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .badge.ok { border-color:var(--ok); color:var(--ok); }
+  ul.ev { margin:6px 0 4px; padding-left:18px; font-size:13px; line-height:1.55; color:var(--fg-2); }
+  ul.ev li { margin:5px 0; } ul.ev li::marker { color:var(--muted); }
+  a { color:var(--accent); text-decoration:none; } a:hover { text-decoration:underline; text-underline-offset:2px; }
+  .copy { cursor:pointer; }
+  .hint { color:var(--muted); font-size:12.5px; line-height:1.6; }
+  p { margin:10px 0; }
+  .badges { display:flex; flex-wrap:wrap; gap:6px; margin:0 0 14px; }
+  .links { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:13px; font-weight:500; }
+  .rel { display:flex; flex-direction:column; gap:4px; margin:4px 0 12px; }
+  .rel .arrow { color:var(--muted); font-size:12px; padding-left:10px; }
+  .rel .arrow b { color:var(--accent); font-weight:600; }
+  h4 { margin:22px 0 10px; font:400 10px/1 var(--label); text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+       display:flex; align-items:center; gap:10px; }
+  h4::after { content:""; flex:1; height:1px; background:var(--line); }
+  pre.query { margin:0 0 10px; padding:12px 14px; line-height:1.55; background:var(--bg); border:1px solid var(--line); border-left:2px solid var(--info);
+              border-radius:2px; white-space:pre-wrap; word-break:break-all; font-size:12.5px; }
+  .tl-lane { margin:14px 0 22px; }
+  .tl-name { display:flex; justify-content:space-between; font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .tl-name b { color:var(--fg); font:500 9.5px var(--label); letter-spacing:.06em; text-transform:uppercase; }
+  .tl-track { position:relative; height:16px; background:var(--bg); border:1px solid var(--line); border-radius:1px; }
+  .tl-seg { position:absolute; top:3px; height:8px; border-radius:1px; opacity:.6; }
+  .tl-dot { position:absolute; top:2px; width:10px; height:10px; margin-left:-5px; border-radius:1px; border:1px solid var(--bg); cursor:pointer; transform:rotate(45deg); }
+  .tl-chg { position:absolute; top:-3px; bottom:-3px; width:0; border-left:1px dashed var(--muted); }
+  .tl-vals { margin:8px 0 0; padding:0; list-style:none; font-size:12.5px; }
+  .tl-vals li { display:flex; gap:10px; align-items:baseline; padding:3px 0; }
+  .tl-vals .v { flex:1; word-break:break-all; font-family:var(--mono); }
+  .tl-vals .d, .tl-axis { color:var(--muted); white-space:nowrap; font:300 10px var(--label); }
+  .tl-axis { display:flex; justify-content:space-between; margin-top:3px; }
+  .chg td { font-size:11.5px; }
+  .chg .old { color:var(--muted); text-decoration:line-through; }
+  .btn { background:transparent; color:var(--fg); border:1px solid var(--line-2); border-radius:2px; padding:9px 14px 8px; cursor:pointer; text-decoration:none;
+         font:400 9.5px/1.2 var(--label); letter-spacing:.06em; text-transform:uppercase; }
+  .btn:hover { border-color:var(--fg-2); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:var(--on-accent); font-weight:500; }
+  .btn.primary:hover { filter:brightness(1.08); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .pivot-box { border:1px solid var(--line); background:var(--panel-2); border-radius:2px; padding:14px 16px; margin:4px 0 6px; }
+  .pivot-box .srcs { display:flex; flex-wrap:wrap; gap:8px 18px; margin-bottom:12px; }
+  .verdict-box .row { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .verdict-box .btn.sel { border-color:var(--accent); color:var(--accent); }
+  .verdict-box input, .verdict-box textarea { width:100%; box-sizing:border-box; background:var(--bg); color:var(--fg);
+    border:1px solid var(--line); border-radius:2px; padding:7px 9px; font:13px var(--mono); margin-bottom:8px; }
+  .verdict-box textarea { min-height:52px; resize:vertical; font-family:var(--sans); }
+  .regex-box textarea { width:100%; min-height:88px; resize:vertical; background:var(--bg); color:var(--fg); border:1px solid var(--line-2);
+                        border-radius:2px; padding:9px 11px; font:12.5px/1.6 var(--mono); outline:none; margin-bottom:10px; }
+  .regex-box textarea:focus { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-dim); }
+  .pf-lab { display:flex; align-items:center; gap:8px; margin-bottom:8px; font:400 9.5px/1 var(--label); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  .pf-dot { width:10px; height:10px; border-radius:50%; border:2.5px solid var(--accent); flex:none; }
+  .pf-dot.b { border-color:var(--lead); }
+  .pf-swap { display:flex; justify-content:flex-end; margin:-10px 0 -6px; }
+  .pf-opt { display:flex; gap:7px; align-items:center; cursor:pointer; margin-bottom:6px; font-size:13px; }
+  .pf-sum { margin:16px 0 4px; font:300 11px/1.5 var(--label); color:var(--fg-2); }
+  .pf-sum b { font-weight:500; color:var(--accent); }
+  ol.pf-path { list-style:none; margin:10px 0 12px; padding:10px 12px; background:var(--panel-2); border:1px solid var(--line); border-left:2px solid var(--accent); border-radius:2px; }
+  ol.pf-path:hover { border-color:var(--line-2); border-left-color:var(--accent); }
+  ol.pf-path li { font-size:12.5px; word-break:break-all; }
+  .pf-rel { display:block; margin:4px 0 4px 4px; padding-left:12px; border-left:1px dashed var(--line-2); color:var(--muted);
+            font:400 9.5px/1.9 var(--label); letter-spacing:.04em; }
+  .opt { display:flex; gap:7px; align-items:center; margin:8px 0 0; cursor:pointer; font-size:13px; }
+  details.fold { margin-top:18px; border-top:1px solid var(--line); padding-top:12px; }
+  details.fold > summary { cursor:pointer; list-style:none; font:400 9.5px/1 var(--label); letter-spacing:.08em; text-transform:uppercase; color:var(--muted); }
+  details.fold > summary::-webkit-details-marker { display:none; }
+  details.fold > summary::before { content:"+ "; }
+  details.fold[open] > summary::before { content:"− "; }
+  details.fold .legend { margin:12px 0 0; padding:0; border:0; }
+  details.fold #p-pivots { margin-top:10px; }
+  .camp-list { display:flex; flex-direction:column; gap:6px; }
+  button.camp { display:flex; align-items:center; gap:10px; width:100%; text-align:left; background:var(--panel-2); color:var(--fg);
+                border:1px solid var(--line); border-left:2px solid var(--rep); border-radius:2px; padding:9px 11px; cursor:pointer; font:inherit; }
+  button.camp:hover { border-color:var(--line-2); border-left-color:var(--rep); }
+  .camp-name { font-weight:600; }
+  .camp-meta { flex:1; color:var(--muted); font:300 10px/1.3 var(--label); }
+  #camp-iocs .rep-list { margin-top:10px; }
+  .badge.lead { border-color:var(--lead); color:var(--lead); }
+  .pf-links { margin-left:auto; color:var(--muted); font-size:12px; font-weight:400; }
+  .ladder { margin:10px 0 20px; }
+  .ld-head { font:400 9.5px/1.5 var(--label); letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin-bottom:8px; }
+  .ld-head code { text-transform:none; letter-spacing:0; }
+  .ladder ol { list-style:none; margin:0; padding:0 0 0 12px; border-left:1px solid var(--line-2); }
+  li.ld { position:relative; padding:6px 0 12px 10px; }
+  li.ld::before { content:""; position:absolute; left:-17px; top:10px; width:9px; height:9px; border-radius:50%; background:var(--panel); border:1.5px solid var(--muted); }
+  li.ld.best::before { background:var(--accent); border-color:var(--accent); }
+  li.ld.dropped { opacity:.5; }
+  .ld-top { display:flex; justify-content:space-between; align-items:baseline; gap:8px; }
+  .ld-label { font:500 9.5px/1.4 var(--label); letter-spacing:.06em; text-transform:uppercase; color:var(--fg-2); }
+  li.ld.best .ld-label { color:var(--accent); }
+  .ld-n { font:300 12px var(--label); color:var(--fg); white-space:nowrap; }
+  .ld-bar { height:3px; background:var(--line); margin:5px 0 7px; }
+  .ld-bar i { display:block; height:100%; background:var(--muted); }
+  li.ld.best .ld-bar i { background:var(--accent); }
+  li.ld code { display:block; font-size:11.5px; word-break:break-all; padding:4px 7px; }
+  .ld-cond, .ld-why, .ld-dec { font-size:12px; line-height:1.45; margin-top:5px; color:var(--muted); }
+  .ld-why { color:var(--fg-2); }
+  .ld-sample { display:flex; flex-wrap:wrap; gap:4px; margin-top:6px; }
+  .ld-sample span { font:11px var(--mono); color:var(--muted); border:1px solid var(--line); padding:1px 5px; border-radius:2px; }
+  .ld-foot { font-size:12.5px; margin:2px 0 0 12px; }
+  .seen-list { list-style:none; padding:0; margin:0; }
+  .seen-list li { padding:6px 0; border-bottom:1px solid var(--line); }
+  .seen-list .m { color:var(--muted); font-size:12px; }
+  .pivot-box label { display:flex; gap:7px; align-items:center; cursor:pointer; font-size:13px; }
+  #jobs { position:fixed; left:50%; transform:translateX(-50%); bottom:14px; display:flex; flex-direction:column; gap:6px; max-width:min(460px, 60vw); z-index:5; }
+  .job { background:var(--panel); border:1px solid var(--line-2); border-left:3px solid var(--accent); border-radius:2px; padding:8px 11px; font-size:12.5px; box-shadow:var(--shadow); }
+  .job.error { border-left-color:var(--bad); }
+  .job .l { color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font:11px var(--mono); margin-top:3px; }
+  .job .x { float:right; cursor:pointer; color:var(--muted); margin-left:8px; }
+  .tree, .tree ul { list-style:none; margin:0; padding-left:14px; }
+  .tree { padding-left:0; }
+  .tree ul { border-left:1px solid var(--line); margin-left:5px; padding-left:12px; }
+  .tree li { margin:3px 0; line-height:2; }
+  .tree details > summary { cursor:pointer; list-style:none; }
+  .tree details > summary::-webkit-details-marker { display:none; }
+  .tree details > summary::before { content:"+"; display:inline-block; width:14px; color:var(--muted); font-family:var(--label); font-size:11px; }
+  .tree details[open] > summary::before { content:"−"; color:var(--accent); }
+  .tree .leaf::before { content:""; display:inline-block; width:14px; }
+  .tree .via { color:var(--muted); font:300 9.5px var(--label); }
+  .tree .row > * { margin-right:4px; }
+  .tree a[data-id], .rep-list a[data-id] { color:var(--fg); font:12.5px var(--mono); }
+  .tree a[data-id]:hover, .rep-list a[data-id]:hover { color:var(--accent); text-decoration:none; }
+  .tree .pv { font-size:9px; padding:1px 6px; }
+  .tag { font:400 9px/1.5 var(--label); text-transform:uppercase; letter-spacing:.04em; padding:1px 5px; border-radius:2px; border:1px solid var(--line-2); color:var(--muted); }
+  .badge.rep { border-color:var(--rep); color:var(--rep); }
+  .rep-list { margin:6px 0 6px; padding:0; list-style:none; }
+  .rep-list li { border-left:2px solid var(--rep); padding:7px 0 8px 12px; margin-bottom:8px; background:linear-gradient(90deg, #cf7a9c0d, transparent 60%); }
+  .rep-list .m { color:var(--muted); font-size:12px; margin-top:3px; }
+  .badge.P1 { background:var(--bad); border-color:var(--bad); color:#fff; }
+  .badge.P2 { background:var(--warn); border-color:var(--warn); color:#1c1206; }
+  .badge.P3 { border-color:var(--info); color:var(--info); }
+  .badge.noise { border-style:dashed; color:var(--muted); }
+  /* fidelity / confidence: number + bar + band word, colour reinforces */
+  .sc { display:grid; grid-template-columns:86px 30px 1fr 64px; gap:8px; align-items:center; font-size:12px; margin:4px 0; }
+  .sc .k { color:var(--muted); font:400 10px/1.4 var(--label); text-transform:uppercase; letter-spacing:.06em; }
+  .sc .v { font:600 13px var(--mono); text-align:right; }
+  .sc .b { height:6px; background:var(--line); border-radius:3px; overflow:hidden; }
+  .sc .b i { display:block; height:100%; background:var(--muted); }
+  .sc.high .b i { background:var(--ok); } .sc.medium .b i { background:var(--warn); } .sc.low .b i { background:var(--bad); opacity:.7; }
+  .sc .w { color:var(--muted); font-size:11px; }
+  .fx { list-style:none; margin:4px 0 8px; padding:0; font-size:12px; }
+  .fx li { padding:3px 0 3px 16px; position:relative; border-bottom:1px solid var(--line); line-height:1.45; }
+  .fx li::before { content:"+"; position:absolute; left:2px; color:var(--ok); font-family:var(--mono); }
+  .fx li.conflict::before { content:"!"; color:var(--bad-text); } .fx li.limit::before { content:"~"; color:var(--warn); }
+  .fx li.info::before, .fx li.term::before { content:"·"; color:var(--muted); }
+  .fx .p { float:right; font-family:var(--mono); color:var(--muted); margin-left:8px; }
+  .heur { font-size:11px; color:var(--muted); margin:2px 0 8px; }
+  .rng { display:flex; align-items:center; gap:8px; margin:8px 0 0; font-size:12.5px; }
+  .rng input[type=range] { flex:1; accent-color:var(--accent); }
+  .rng output { font-family:var(--mono); min-width:24px; text-align:right; }
+  .ec { font-family:var(--mono); font-size:11px; color:var(--muted); }
+  .action { border:1px solid var(--line); border-left:3px solid var(--line-2); padding:12px 16px 8px; margin:14px 0 8px; background:var(--panel-2); border-radius:2px; }
+  .action b { font:500 10.5px var(--label); letter-spacing:.06em; text-transform:uppercase; }
+  .action.P1 { border-left-color:var(--bad); } .action.P1 b { color:var(--bad-text); }
+  .action.P2 { border-left-color:var(--warn); } .action.P2 b { color:var(--warn); }
+  .action.P3 { border-left-color:var(--info); } .action.P3 b { color:var(--info); }
+  .tfit { font:400 9px/1.5 var(--label); text-transform:uppercase; padding:1px 5px; border-radius:2px; border:1px solid; }
+  .tfit.fits, .tfit.current { border-color:var(--ok); color:var(--ok); }
+  .tfit.earlier, .tfit.later { border-color:var(--warn); color:var(--warn); }
+  .legend { display:grid; grid-template-columns:1fr 1fr; gap:10px 14px; margin:16px 0 4px; padding-top:16px; border-top:1px solid var(--line);
+            font-size:12.5px; color:var(--fg-2); }
+  .legend span { display:flex; align-items:center; gap:10px; }
+  .legend i { width:14px; height:14px; border-radius:50%; flex:none; background:var(--line-2); }
+  .tag.done { border-color:var(--accent); color:var(--accent); }
+  div.vis-tooltip { background:var(--panel) !important; color:var(--fg) !important; border:1px solid var(--line-2) !important; border-radius:2px !important;
+                    font:12.5px var(--mono) !important; padding:8px 11px !important; box-shadow:var(--shadow) !important; }
+  @media (max-width:760px) {
+    #explore { left:8px; right:8px; top:8px; width:auto; max-height:44vh; }
+    #entity { left:8px; right:8px; top:auto; bottom:62px; width:auto; max-height:44vh; }
+    #controls { right:8px; bottom:8px; } .tabs button { font-size:8.5px; letter-spacing:.03em; padding-left:3px; padding-right:3px; }
+  }
+</style>
+</head>
+<body>
+<div id="graph"></div>
+<div id="jobs"></div>
+<section id="explore" class="card">
+  <header><div class="eyebrow"><b>Infra</b>Mapper<span class="view">Explore</span></div><h1 id="title"></h1><div class="meta" id="meta"></div>
+    <button class="icon-btn" id="collapse" title="Collapse panel"><svg viewBox="0 0 24 24"><path d="m18 15-6-6-6 6"/></svg></button></header>
+  <div class="tabs">
+    <button data-p="p-filter" class="on">Overview</button>
+    <button data-p="p-hunt">Hunt</button>
+    <button data-p="p-path">Path</button>
+    <button data-p="p-tree">Tree</button>
+  </div>
+  <div class="panes">
+  <div class="pane on" id="p-filter">
+    <div id="campaign"></div>
+    <h4>In the graph</h4>
+    <input type="search" id="q" placeholder="Find a node… (Enter)">
+    <div class="types" id="types"></div>
+    <label class="opt"><input type="checkbox" id="showall"> Unconfirmed pivot hits <span class="hint" id="ncand"></span></label>
+    <label class="opt"><input type="checkbox" id="showleads" checked> New-domain leads <span class="hint" id="nleads"></span></label>
+    <label style="display:none"><input type="checkbox" id="elabels"></label>
+    <label style="display:none"><input type="checkbox" id="treelayout"></label>
+    <h4>Evidence quality</h4>
+    <label class="rng" title="Hide entities whose fidelity (relevance to this investigation) is below this">Fidelity ≥ <input type="range" id="minfid" min="0" max="100" step="5" value="0"><output id="minfid-o">0</output></label>
+    <label class="rng" title="Hide relationships whose confidence is below this">Link confidence ≥ <input type="range" id="minconf" min="0" max="100" step="5" value="0"><output id="minconf-o">0</output></label>
+    <label class="rng">Source <select id="srcf" style="flex:1"><option value="">any</option></select></label>
+    <label class="opt"><input type="checkbox" id="hidestale"> Hide stale links (&gt; 1 year)</label>
+    <p class="heur">Scores are explainable heuristics on 0–100, not probabilities. Click a node or link for the evidence.</p>
+    <details class="fold"><summary>Legend</summary><div class="legend">
+      <span><i style="width:22px;height:0;border-radius:0;border-top:3px solid var(--fg-2);background:none"></i>High-confidence link</span>
+      <span><i style="width:22px;height:0;border-radius:0;border-top:1px dotted var(--muted);background:none"></i>Low-confidence link</span>
+      <span><i style="box-shadow:0 0 0 3px var(--accent) inset"></i>Seed</span>
+      <span><i style="box-shadow:0 0 0 3px var(--bad) inset"></i>VT malicious</span>
+      <span><i style="box-shadow:0 0 8px 2px var(--accent)"></i>Pivoted on</span>
+      <span><i style="opacity:.5;border:1.5px dashed var(--muted);background:none"></i>Unconfirmed</span>
+      <span><i style="border:2px dashed var(--lead);background:none"></i>New-domain lead</span>
+      <span><i style="background:var(--muted)"></i>Too broad</span>
+    </div></details>
+    <p class="hint" id="livehint"></p>
+  </div>
+  <div class="pane" id="p-hunt">
+    <div id="regex-box"></div>
+    <div id="ladders"></div>
+    <div id="hunt-list"></div>
+    <details class="fold"><summary>Pivots run <span id="npiv"></span></summary><div id="p-pivots"></div></details>
+  </div>
+  <div class="pane" id="p-path">
+    <label class="pf-lab" for="pf-a"><i class="pf-dot"></i>Start</label>
+    <input type="search" id="pf-a" list="pf-list" autocomplete="off" placeholder="Domain, IP, hash… or Shift+click a node">
+    <div class="pf-swap"><button class="icon-btn" id="pf-swap" title="Swap start and target"><svg viewBox="0 0 24 24"><path d="M7 4v16M3 8l4-4 4 4M17 20V4M13 16l4 4 4-4"/></svg></button></div>
+    <label class="pf-lab" for="pf-b"><i class="pf-dot b"></i>Target</label>
+    <input type="search" id="pf-b" list="pf-list" autocomplete="off" placeholder="…or Alt+click a node">
+    <datalist id="pf-list"></datalist>
+    <label class="pf-opt"><input type="checkbox" id="pf-dir"> Follow edge direction</label>
+    <label class="pf-opt"><input type="checkbox" id="pf-hosts"> Only through hosts (domain / IP / URL / file)</label>
+    <p><button class="btn primary" id="pf-go">Find paths ▸</button> <button class="btn" id="pf-clear">Clear</button></p>
+    <div id="pf-out"></div>
+  </div>
+  <div class="pane" id="p-tree"></div>
+  </div>
+</section>
+<section id="entity" class="card" hidden>
+  <div class="ent-head"><img id="ent-icon" alt=""><div class="t"><div class="ty" id="ent-type"></div><div class="nm" id="ent-name"></div></div>
+    <button class="icon-btn" id="ent-close" title="Close (Esc)"><svg viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></svg></button></div>
+  <div id="p-node"></div>
+</section>
+<div id="controls" class="card">
+  <button class="icon-btn" data-c="zin" title="Zoom in"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M11 8v6M8 11h6"/></svg></button>
+  <button class="icon-btn" data-c="zout" title="Zoom out"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m20 20-4.5-4.5M8 11h6"/></svg></button>
+  <button class="icon-btn" data-c="fit" title="Fit graph"><svg viewBox="0 0 24 24"><path d="M4 9V5a1 1 0 0 1 1-1h4M15 4h4a1 1 0 0 1 1 1v4M20 15v4a1 1 0 0 1-1 1h-4M9 20H5a1 1 0 0 1-1-1v-4"/></svg></button>
+  <span class="sep"></span>
+  <button class="icon-btn" data-c="tree" title="Tree layout (seed left, one column per pivot)"><svg viewBox="0 0 24 24"><rect x="3" y="9" width="5" height="6" rx="1"/><rect x="16" y="3" width="5" height="5" rx="1"/><rect x="16" y="16" width="5" height="5" rx="1"/><path d="M8 12h4M12 5.5V18.5M12 5.5h4M12 18.5h4"/></svg></button>
+  <button class="icon-btn" data-c="labels" title="Relationship labels"><svg viewBox="0 0 24 24"><path d="M4 7V5h16v2M9 19h6M12 5v14"/></svg></button>
+  <span class="sep"></span>
+  <button class="icon-btn" data-c="png" title="Export PNG"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="1"/><circle cx="9" cy="10" r="2"/><path d="m21 16-5-5-9 9"/></svg></button>
+  <button class="icon-btn" data-c="json" title="Export graph JSON"><svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg></button>
+  <span class="sep"></span>
+  <button class="icon-btn" data-c="theme" title="Light / dark"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg></button>
+</div>
+<script>
+const D = __DATA__;
+// ---- theme: stored choice, else the OS setting
+const THEMES = {
+  dark:  {lead:"#5bb8cc", fg:"#d9d4c7", halo:"#0e0f0d", edge:"#3f4038", edgeQ:"#5a594f", elabel:"#a8a395", ebg:"#0e0f0d", ring:"#e8e4d8", accent:"#e5a23c", bad:"#e0482f", broad:"#46473f", bg:"#0e0f0d"},
+  light: {lead:"#1f7a8c", fg:"#2a2924", halo:"#f3f2ee", edge:"#c4c1b6", edgeQ:"#a09c90", elabel:"#6a675e", ebg:"#f3f2ee", ring:"#1d1c18", accent:"#b0691a", bad:"#c2412d", broad:"#c9c6bc", bg:"#f3f2ee"},
+};
+let MODE = (() => { try { const t = localStorage.getItem("ioci-theme"); if (t in THEMES) return t; } catch (e) {}
+  return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; })();
+document.documentElement.dataset.theme = MODE;
+const T = () => THEMES[MODE];
+
+// node colour + glyph (BloodHound-style: filled disc, white icon, label below)
+const STYLE = {
+  File:{c:"#8a5bb5"}, Domain:{c:"#3f7fa0"}, IP:{c:"#c7811c"}, URL:{c:"#5d8f4e"}, ASN:{c:"#6e6a5f"},
+  Certificate:{c:"#869236"}, JARM:{c:"#3f8c83"}, ThreatLabel:{c:"#c2412d"}, Favicon:{c:"#c46a33"},
+  Title:{c:"#a3834d"}, HtmlHash:{c:"#a4533b"}, Script:{c:"#7462a8"}, Pattern:{c:"#b05b68"}, Scan:{c:"#5b5950"},
+  IntelQuery:{c:"#7d786b"}, NameServer:{c:"#a8842a"}, MailServer:{c:"#8f7550"}, SoaEmail:{c:"#c65a48"}, Report:{c:"#b04f7a"}
+};
+const GLYPH = {
+  Domain:'<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.6 2.4 3.8 5.2 3.8 8.5s-1.2 6.1-3.8 8.5M12 3.5C9.4 5.9 8.2 8.7 8.2 12s1.2 6.1 3.8 8.5"/>',
+  IP:'<rect x="4" y="4.5" width="16" height="6" rx="1"/><rect x="4" y="13.5" width="16" height="6" rx="1"/><path d="M7.5 7.5h.01M7.5 16.5h.01"/>',
+  File:'<path d="M14 3.5H7a1 1 0 0 0-1 1v15a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-12z"/><path d="M14 3.5v4h4M9 13h6M9 16.5h4"/>',
+  URL:'<path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1"/><path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/>',
+  ASN:'<circle cx="12" cy="5.5" r="2"/><circle cx="5.5" cy="18.5" r="2"/><circle cx="18.5" cy="18.5" r="2"/><path d="M12 7.5V12l-5.2 4.8M12 12l5.2 4.8"/>',
+  Certificate:'<rect x="5" y="11" width="14" height="9.5" rx="1"/><path d="M8 11V8a4 4 0 0 1 8 0v3M12 15v2"/>',
+  JARM:'<path d="M5 12a7 7 0 0 1 14 0M8 12a4 4 0 0 1 8 0M11 12a1 1 0 0 1 2 0v6M5 16v2M19 15v3M8 16v3M16 15v4"/>',
+  ThreatLabel:'<path d="M12 4 3 19.5h18z"/><path d="M12 10v4.5M12 17h.01"/>',
+  Favicon:'<rect x="4" y="5" width="16" height="14" rx="1"/><circle cx="9.5" cy="10" r="1.6"/><path d="m20 15.5-4.5-4.5L7 19"/>',
+  Title:'<path d="M5 6h14M12 6v13M9 19h6"/>',
+  HtmlHash:'<path d="m8.5 8-4 4 4 4M15.5 8l4 4-4 4M13 6l-2 12"/>',
+  Script:'<path d="M9 4H8a2 2 0 0 0-2 2v4l-2 2 2 2v4a2 2 0 0 0 2 2h1M15 4h1a2 2 0 0 1 2 2v4l2 2-2 2v4a2 2 0 0 1-2 2h-1"/>',
+  Pattern:'<circle cx="11" cy="11" r="6"/><path d="m19.5 19.5-4.2-4.2M8.5 11h5"/>',
+  IntelQuery:'<circle cx="11" cy="11" r="6"/><path d="m19.5 19.5-4.2-4.2M11 8.5v5M8.5 11h5"/>',
+  Scan:'<path d="M4 8.5V5a1 1 0 0 1 1-1h3.5M15.5 4H19a1 1 0 0 1 1 1v3.5M20 15.5V19a1 1 0 0 1-1 1h-3.5M8.5 20H5a1 1 0 0 1-1-1v-3.5"/><circle cx="12" cy="12" r="3"/>',
+  NameServer:'<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/><path d="M8 9h8M8 12h8M8 15h5"/>',
+  MailServer:'<rect x="3.5" y="5.5" width="17" height="13" rx="1"/><path d="m3.5 7.5 8.5 6 8.5-6"/>',
+  SoaEmail:'<circle cx="12" cy="12" r="3.5"/><path d="M15.5 8.5v4.3a2.6 2.6 0 0 0 5.2 0V12a8.7 8.7 0 1 0-3.4 6.9"/>',
+  Relationship:'<path d="M4 12h13M13 7l5 5-5 5"/>',
+  Report:'<path d="M5 5.5a2 2 0 0 1 2-2h12v15H7a2 2 0 0 0-2 2z"/><path d="M5 20.5v-15M9 8h6M9 11h4"/>',
+};
+const iconCache = {};
+function icon(type, fill) {
+  const k = type + fill;
+  return iconCache[k] || (iconCache[k] = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="${fill}"/>` +
+    `<g transform="translate(12 12)" fill="none" stroke="#fff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">` +
+    `${GLYPH[type] || '<circle cx="12" cy="12" r="3"/>'}</g></svg>`));
+}
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const PIVOT_TYPES = new Set(["Pattern", "IntelQuery"]);
+const nodeQuery = n => n && n.props && (n.props.urlscan_query || n.props.vt_query) || (n && PIVOT_TYPES.has(n.type) ? n.value : "");
+const nodeLabel = n => n.type === "Report" ? short("Pattern", (n.props && n.props.name) || n.value) : PIVOT_TYPES.has(n.type) ? (n.props && n.props.kind ? n.props.kind : n.type) : short(n.type, n.value);
+const short = (t, v) => { v = String(v); if (t==="Pattern"||t==="Title") return v.length>38 ? v.slice(0,36)+"…" : v;
+  if (t==="URL") return v.replace(/^https?:\/\//,"").slice(0,40); if (/^[a-f0-9]{32,}$/i.test(v)) return v.slice(0,12)+"…";
+  if (t==="Certificate") return (v.split("|")[0]).slice(0,30); return v.length>42 ? v.slice(0,40)+"…" : v; };
+
+document.getElementById("title").textContent = D.title;
+const HOST_TYPES = new Set(["File","Domain","IP","URL"]);
+const PIVOT_NODES = new Set([...HOST_TYPES, "Certificate"]);   // what can be pivoted on
+// in view: confirmed cluster, or pinned because an analyst pivoted on it / on its neighbour
+const inCluster = n => !n.props || n.props.cluster !== false || !!n.props.pinned;
+let byId = {};
+const hidden = new Set();
+const showAll = document.getElementById("showall");
+// new-domain hunt leads: not confirmed (a look-alike name needs corroboration), but strong / medium ones
+// are what the hunt is for, so they're shown by default in their own style with what ties them to the case
+const showLeads = document.getElementById("showleads");
+const isLead = n => !!(n.props && ["strong", "medium"].includes(n.props.new_domain)) && !inCluster(n);
+let leadLinks = new Set();   // look-alike / kit-reuse nodes linking a lead to the cluster
+const shownLead = n => showLeads.checked && (isLead(n) || leadLinks.has(n.id));
+const inView = n => inCluster(n) || shownLead(n);
+let PATH = null;   // active pathfinding result: {a, b, paths, nodes, edges}
+// evidence-quality filters (fidelity / confidence / source / freshness; see scoring.py)
+const SCF = {fid: 0, conf: 0, src: "", stale: false};
+const nscore = n => (D.scores || {})[n.id];
+const escore = e => (e.props && e.props.score) || null;
+const lowFid = n => SCF.fid > 0 && n.id !== D.seed && (nscore(n) ? (nscore(n).fidelity || 0) < SCF.fid : false);
+const edgeOut = e => { const s = escore(e); if (!s) return false;
+  return (SCF.conf > 0 && s.confidence < SCF.conf) || (SCF.src && !(s.sources || []).includes(SCF.src)) || (SCF.stale && s.stale); };
+const isHidden = n => !(PATH && PATH.nodes.has(n.id)) && (hidden.has(n.type) || (!showAll.checked && !inView(n)) || lowFid(n));
+function updateMeta() {
+  byId = Object.fromEntries(D.nodes.map(n => [n.id, n]));
+  leadLinks = new Set();
+  for (const e of D.edges) for (const [a, b] of [[e.source, e.target], [e.target, e.source]])
+    if (byId[a] && isLead(byId[a]) && byId[b] && !HOST_TYPES.has(byId[b].type) && !inCluster(byId[b])) leadLinks.add(b);
+  const nLeads = D.nodes.filter(isLead).length;
+  document.getElementById("nleads").textContent = `(${nLeads})`;
+  const nCand = D.nodes.filter(n => !inView(n)).length;
+  document.getElementById("meta").textContent = `${D.nodes.length - nCand} in view` +
+    (nCand ? ` · ${nCand} unconfirmed hidden` : "") + ` · ${String(D.generated).slice(0, 10)}`;
+  document.getElementById("ncand").textContent = `(${nCand})`;
+}
+updateMeta();
+
+function visNode(n) {
+  const st = STYLE[n.type] || {c:"#77746a"}, p = n.props || {}, t = T();
+  const mal = (p.vt_malicious||0) > 0 || p.malicious === true;
+  const seed = n.id === D.seed, inc = inCluster(n), lead = isLead(n), fill = p.broad ? t.broad : st.c;
+  return { id:n.id, label:nodeLabel(n), ntype:n.type, shape:"circularImage", image:icon(n.type, fill),
+    size: seed ? 28 : (HOST_TYPES.has(n.type) ? 18 : 13),
+    color:{ background:fill, border: mal ? t.bad : (seed ? t.accent : (lead ? t.lead : fill)),
+            highlight:{background:fill, border:t.ring}, hover:{background:fill, border:t.ring} },
+    borderWidth: mal || lead ? 3 : (seed ? 4 : 0), borderWidthSelected: 3, hidden: isHidden(n), physics: inc || shownLead(n),
+    opacity: p.analyst_verdict === "fp" ? 0.25 : (inc || lead ? 1 : 0.4),
+    shapeProperties:{ borderDashes: inc ? false : (lead ? [6,3] : [4,3]), interpolation:true },
+    shadow: p.expanded && HOST_TYPES.has(n.type) ? {enabled:true, color:t.accent, size:16, x:0, y:0} : {enabled:false},
+    font:nodeFont(seed),
+    title: PIVOT_TYPES.has(n.type) ? `${n.type} pivot: ${nodeLabel(n)}`
+      : `${n.type}: ${n.value}` + (lead ? `\nnew domain lead (${p.new_domain}): not confirmed` : "") };
+}
+const nodeFont = seed => ({ color:T().fg, size: seed ? 15 : 12.5, face:"IBM Plex Mono, ui-monospace, monospace",
+  strokeWidth:4, strokeColor:T().halo, vadjust:2, bold:{color:T().fg} });
+const nodes = new vis.DataSet(D.nodes.map(visNode));
+// Pivot query behind an edge: stored on the edge itself, else on the pivot node it touches
+function edgeQuery(e) {
+  const p = e.props || {};
+  if (p.query) return {query:p.query, source:p.source || "urlscan"};
+  for (const nid of [e.target, e.source]) {
+    const n = byId[nid], q = nodeQuery(n);
+    const P = (n && n.props) || {};
+    if (q) return {query:q, source: !P.urlscan_query && P.vt_query ? "VT Intelligence" : "urlscan"};
+  }
+  return null;
+}
+const candEdge = e => !inView(byId[e.source] || {}) || !inView(byId[e.target] || {});
+const elabels = document.getElementById("elabels");
+// link confidence drives width (0.6-3px), opacity and a dotted stroke below 25: weak links recede
+const visEdge = (e,i) => { const q = edgeQuery(e), s = escore(e), c = s ? s.confidence : 50, th = edgeTheme(q);
+  th.color.opacity = c >= 50 ? 1 : c >= 25 ? .7 : .45;
+  return { id:i, from:e.source, to:e.target, label: elabels.checked ? e.rel : undefined,
+  physics: showAll.checked || !candEdge(e), hidden: edgeOut(e),
+  arrows:{to:{enabled:true, scaleFactor:.6}}, dashes: c < 25 ? [2,4] : !!q, ...th,
+  chosen:{ label:(v) => { v.color = T().accent; v.size = 10.5; },
+           edge:(v) => { v.color = T().accent; } },
+  width: .6 + 2.4 * c / 100, hoverWidth:1.5, selectionWidth:2.5, arrowStrikethrough:false,
+  title: (q ? `${e.rel} — click to see pivot query` : e.rel) + (s ? `\nlink confidence ${s.confidence}/100 (${s.band})` +
+    (s.sources.length ? ` · ${s.sources.join(", ")}` : "") + (s.stale ? " · stale" : "") + (s.conflicts.length ? " · conflicting evidence" : "") : ""),
+  smooth:{type:"continuous"} }; };
+const edges = new vis.DataSet(D.edges.map(visEdge));
+function edgeTheme(q) { const t = T(); return {
+  color:{color: q ? t.edgeQ : t.edge, highlight:t.accent, hover:t.fg, inherit:false},
+  font:{size:10.5, face:"Inter, system-ui, sans-serif", color:t.elabel, background:t.ebg, strokeWidth:0, align:"horizontal"} }; }
+
+const PHYSICS = { solver:"forceAtlas2Based", forceAtlas2Based:{gravitationalConstant:-140, springLength:250, springConstant:0.06, avoidOverlap:0.9}, stabilization:{iterations:300} };
+const net = new vis.Network(document.getElementById("graph"), {nodes, edges}, {
+  physics:PHYSICS, interaction:{ hover:true, tooltipDelay:120, selectConnectedEdges:false, hoverConnectedEdges:true }, layout:{ improvedLayout: D.nodes.length < 300 } });
+net.once("stabilizationIterationsDone", () => { net.setOptions({physics:{enabled:false}}); fitView(false); });
+// canvas labels: redraw once the web fonts are in (they fall back to the system mono before)
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => net.redraw());
+// let physics run briefly (e.g. to place new nodes), optionally with the existing layout frozen
+// fit the graph into the space the floating panels leave free
+function fitView(anim = true) {
+  const ex = document.getElementById("explore"), en = document.getElementById("entity");
+  const left = ex.classList.contains("collapsed") ? 0 : ex.offsetWidth + 16, right = en.hidden ? 0 : en.offsetWidth + 16;
+  const w = document.getElementById("graph").clientWidth, free = Math.max(240, w - left - right);
+  net.fit({animation:false});
+  // never zoom out so far that labels become unreadable: pan instead
+  net.moveTo({position:net.getViewPosition(), scale:Math.max(0.9, Math.min(1.3, net.getScale() * free / w * 0.9)),
+              offset:{x:(left - right) / 2, y:0}, animation: anim ? {duration:350, easingFunction:"easeInOutQuad"} : false});
+}
+// keep a node out from under the floating panels
+function ensureVisible(id) {
+  const ex = document.getElementById("explore"), en = document.getElementById("entity");
+  const left = ex.classList.contains("collapsed") ? 0 : ex.offsetWidth + 16, right = en.hidden ? 0 : en.offsetWidth + 16;
+  const w = document.getElementById("graph").clientWidth, pos = net.getPositions([id])[id];
+  if (!pos) return;
+  const x = net.canvasToDOM(pos).x;
+  if (x < left + 120 || x > w - right - 120)
+    net.moveTo({position:pos, offset:{x:(left - right) / 2, y:0}, animation:{duration:350, easingFunction:"easeInOutQuad"}});
+}
+function settle(freeze) {
+  if (treeOn()) return applyTree();
+  if (freeze) nodes.update(freeze.map(id => ({id, fixed:true})));
+  net.setOptions({physics:{...PHYSICS, enabled:true}}); net.stabilize(200);
+  net.once("stabilized", () => { net.setOptions({physics:{enabled:false}}); if (freeze) nodes.update(freeze.map(id => ({id, fixed:false}))); });
+}
+
+// rebuilt, not updated: vis-network can't remove a label through update() (undefined / null / ""
+// are all ignored and the old label stays drawn); visEdge() reads the checkbox
+elabels.onchange = () => { if (PATH) return applyPath(visibleIds(), false); edges.clear(); edges.add(D.edges.map(visEdge)); };
+
+// type filters + cluster filter
+const refreshHidden = () => nodes.update(D.nodes.map(n => ({id:n.id, hidden: isHidden(n)})));
+showAll.onchange = () => {
+  // candidates sit out the layout until shown; then let them settle around the cluster
+  const on = showAll.checked;
+  nodes.update(D.nodes.filter(n => !inView(n)).map(n => ({id:n.id, physics:on})));
+  edges.update(D.edges.map((e,i) => ({id:i, physics: on || !candEdge(e)})));
+  refreshHidden();
+  if (on) settle();
+};
+showLeads.onchange = () => {
+  const ids = D.nodes.filter(n => isLead(n) || leadLinks.has(n.id));
+  nodes.update(ids.map(visNode));
+  edges.update(D.edges.map((e,i) => ({id:i, physics: showAll.checked || !candEdge(e)})));
+  updateMeta(); refreshHidden();
+  if (showLeads.checked) settle();
+};
+function renderTypes() {
+  const counts = {}, types = document.getElementById("types");
+  D.nodes.forEach(n => counts[n.type] = (counts[n.type]||0)+1);
+  types.innerHTML = "";
+  Object.keys(counts).sort((a,b)=>counts[b]-counts[a]).forEach(t => {
+    const l = document.createElement("label");
+    l.innerHTML = `<input type="checkbox"${hidden.has(t) ? "" : " checked"}><span class="dot" style="background:${(STYLE[t]||{}).c||"#8a8679"}"></span>${t}<span class="n">${counts[t]}</span>`;
+    l.querySelector("input").onchange = ev => { ev.target.checked ? hidden.delete(t) : hidden.add(t); refreshHidden(); };
+    types.appendChild(l);
+  });
+}
+renderTypes();
+
+// evidence-quality controls
+function renderSrcFilter() {
+  const sel = document.getElementById("srcf"), cur = sel.value;
+  const srcs = [...new Set(D.edges.flatMap(e => (escore(e) || {}).sources || []))].sort();
+  sel.innerHTML = `<option value="">any</option>` + srcs.map(s => `<option>${esc(s)}</option>`).join("");
+  sel.value = srcs.includes(cur) ? cur : "";
+}
+function applyScoreFilters() {
+  refreshHidden();
+  edges.update(D.edges.map((e, i) => ({id: i, hidden: edgeOut(e)})));
+}
+renderSrcFilter();
+[["minfid", "fid"], ["minconf", "conf"]].forEach(([id, k]) => document.getElementById(id).addEventListener("input", ev => {
+  SCF[k] = +ev.target.value; document.getElementById(id + "-o").textContent = ev.target.value; applyScoreFilters(); }));
+document.getElementById("srcf").onchange = ev => { SCF.src = ev.target.value; applyScoreFilters(); };
+document.getElementById("hidestale").onchange = ev => { SCF.stale = ev.target.checked; applyScoreFilters(); };
+
+// search
+document.getElementById("q").addEventListener("keydown", ev => {
+  if (ev.key !== "Enter") return;
+  const q = ev.target.value.toLowerCase(); if (!q) return;
+  const hit = D.nodes.filter(n => n.value.toLowerCase().includes(q)).map(n => n.id);
+  if (hit.length) { net.selectNodes(hit); net.fit({nodes:hit, animation:true}); if (hit.length===1) showNode(hit[0]); }
+});
+
+// tabs
+const explore = document.getElementById("explore"), entity = document.getElementById("entity");
+document.querySelectorAll("#explore .tabs button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#explore .tabs button, #explore .pane").forEach(x => x.classList.remove("on"));
+  b.classList.add("on"); document.getElementById(b.dataset.p).classList.add("on"); explore.classList.remove("collapsed"); });
+// "p-node" = the entity panel on the right; everything else is a tab of the Explore panel
+const openTab = id => id === "p-node" ? (entity.hidden = false)
+  : document.querySelector(`#explore .tabs button[data-p="${id}"]`).click();
+document.getElementById("collapse").onclick = () => explore.classList.toggle("collapsed");
+document.getElementById("ent-close").onclick = () => { entity.hidden = true; net.unselectAll(); };
+document.addEventListener("keydown", ev => { if (ev.key === "Escape" && !entity.hidden) document.getElementById("ent-close").click(); });
+function entityHead(type, name, fill) {
+  document.getElementById("ent-icon").src = icon(type, fill);
+  document.getElementById("ent-type").textContent = type;
+  const nm = document.getElementById("ent-name"); nm.textContent = name; nm.title = name;
+}
+// h4-delimited blocks -> collapsible sections; a section the analyst closed stays closed on the next node
+const closedSecs = new Set(["Properties", "Timeline", "Public feeds", "Seen in earlier cases", "Analyst verdict"]);
+function sectionize(pane) {
+  const top = document.createElement("div"); top.className = "ent-top";
+  const out = [top]; let body = top;
+  for (const k of [...pane.childNodes]) {
+    if (k.nodeType === 1 && k.tagName === "H4") {
+      const d = document.createElement("details"), sm = document.createElement("summary"), name = k.textContent.replace(/\s*\(.*$/, "");
+      d.className = "sec"; d.open = !closedSecs.has(name); sm.innerHTML = k.innerHTML;
+      d.ontoggle = () => d.open ? closedSecs.delete(name) : closedSecs.add(name);
+      body = document.createElement("div"); body.className = "body"; d.append(sm, body); out.push(d);
+    } else body.appendChild(k);
+  }
+  pane.replaceChildren(...out);
+}
+
+function links(n) {
+  const v = encodeURIComponent(n.value), out = [];
+  if (n.type==="File") out.push(["VirusTotal", `https://www.virustotal.com/gui/file/${v}`]);
+  if (n.type==="Domain") out.push(["VirusTotal", `https://www.virustotal.com/gui/domain/${v}`], ["urlscan", `https://urlscan.io/search/#page.domain:${v}`]);
+  if (n.type==="IP") out.push(["VirusTotal", `https://www.virustotal.com/gui/ip-address/${v}`], ["urlscan", `https://urlscan.io/search/#page.ip:%22${v}%22`]);
+  if (n.type==="URL") out.push(["urlscan", `https://urlscan.io/search/#page.url:%22${v}%22`]);
+  if (n.type==="Certificate") {
+    const p = n.props || {}, sha = /^[0-9a-f]{64}$/i.test(n.value) ? n.value : p.sha256;
+    if (sha) out.push(["crt.sh", `https://crt.sh/?q=${sha}`], ["Censys", `https://search.censys.io/search?resource=hosts&q=${encodeURIComponent("services.tls.certificates.leaf_data.fingerprint: " + sha)}`]);
+    if (p.sha1) out.push(["Shodan", `https://www.shodan.io/search?query=${encodeURIComponent("ssl.cert.fingerprint:" + p.sha1)}`]);
+    if (p.pubkey_sha256) out.push(["crt.sh same key", `https://crt.sh/?spkisha256=${p.pubkey_sha256}`]);
+  }
+  if (n.type==="Scan") out.push(["urlscan report", `https://urlscan.io/result/${n.value}/`]);
+  if (n.type==="Report" && n.props && n.props.url) out.push(["Report", n.props.url]);
+  if (n.props && n.props.urlscan_query) out.push(["urlscan search", "https://urlscan.io/search/#" + encodeURIComponent(n.props.urlscan_query)]);
+  return out;
+}
+function fmt(k, v) {
+  if (typeof v === "number" && /date|created|first_seen/.test(k) && v > 1e9) return new Date(v*1000).toISOString().slice(0,10);
+  if (Array.isArray(v)) return v.map(esc).join("<br>");
+  if (typeof v === "string" && /^https?:\/\//.test(v)) return `<a href="${esc(v)}" target="_blank" rel="noopener">${esc(v)}</a>`;
+  return esc(typeof v === "object" ? JSON.stringify(v) : v);
+}
+// bookkeeping flags, already shown elsewhere or meaningless to an analyst
+const INTERNAL = new Set(["seed","depth","expanded","pinned","intel_checked","hosting","warninglist","reported","otx_pulses","pivot_from","reported_unlinked",
+  "seen_in","seen_cases","analyst_verdict","analyst_actor","analyst_family","analyst_note","analyst_case","analyst_date","vt_comments_checked","hop_done"]);
+const MARK_NODES = new Set(["File","Domain","IP","URL","Certificate","Favicon","HtmlHash","Script","SoaEmail","JARM","NameServer","MailServer"]);
+function showNode(id) {
+  const n = D.nodes.find(x => x.id === id); if (!n) return;
+  const p = Object.fromEntries(Object.entries(n.props || {}).filter(([k]) => !k.startsWith("cluster") && !FEED_PROPS.has(k)));
+  const cp = n.props || {};
+  const cmp = (a, b) => (a > b) - (a < b);
+  const nb = D.edges.filter(e => e.source === id || e.target === id)
+    .map(e => { const out = e.source === id; return {e, out, o: byId[out ? e.target : e.source]}; }).filter(x => x.o)
+    .sort((a, b) => cmp(a.o.type, b.o.type) || cmp(a.e.rel, b.e.rel));
+  const chips = [
+    p.vt_malicious ? `<span class="badge bad">VT ${p.vt_malicious}/${p.vt_total}</span>` : "",
+    cp.cluster === undefined ? "" : cp.cluster ? `<span class="badge ok">in cluster</span>`
+      : `<span class="badge">${cp.pinned ? "linked to a pivot" : "unconfirmed"}</span>`,
+    p.priority ? `<span class="badge ${esc(p.priority)}" title="${esc(p.action || "")}">${esc(p.priority)}</span>` : "",
+    cp.analyst_verdict === "fp" ? `<span class="badge noise">false positive</span>`
+      : cp.analyst_verdict === "confirmed" ? `<span class="badge ok">analyst: confirmed</span>` : "",
+    cp.new_domain ? `<span class="badge lead">new domain · ${esc(cp.new_domain)}</span>` : "",
+    p.warninglist ? `<span class="badge" title="${esc(p.warninglist)}">known benign</span>` : "",
+    cp.seen_cases ? `<span class="badge rep">seen in ${cp.seen_cases} case${cp.seen_cases > 1 ? "s" : ""}</span>` : "",
+  ].filter(Boolean).join(" ");
+  const regexBtn = n.type === "Domain" && LIVE && LIVE.sources.urlscan
+    ? `<p><button class="btn" id="rxbtn" title="broad regex from this name, refined from its urlscan hits">Regex hunt on this name ▸</button></p>` : "";
+  let h = (chips ? `<p class="badges">${chips}</p>` : "") +
+    `<p>${n.type === "Report" ? `<b>${esc(p.name || n.value)}</b>` : `<code class="copy" title="click to copy">${esc(n.value)}</code>`}</p>
+    <p class="links">${links(n).map(([t,u]) => `<a href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join("")}
+      <span class="pf-links">path <a href="#" data-pf="a">from</a> · <a href="#" data-pf="b">to</a></span></p>
+    ${scoreBox(n)}
+    ${campaignBox(n)}
+    ${PIVOT_NODES.has(n.type) ? pivotBox(n) + regexBtn : ""}
+    ${actionBox(n)}
+    ${leadBox(n)}
+    ${(cp.cluster_evidence || []).length ? `<h4>Why it's linked</h4><ul class="ev">${cp.cluster_evidence.map(x => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+    ${reportedBox(n)}
+    <h4>Related (${nb.length})</h4><table>` +
+    nb.map(({e, out, o}) => `<tr><td class="k"><a href="#" data-edge="${D.edges.indexOf(e)}">${out ? "→" : "←"} ${esc(e.rel)}</a>${escore(e) ? `<div class="ec" title="link confidence">conf ${escore(e).confidence}</div>` : ""}</td><td>${nodeLink(o)}</td></tr>`).join("") +
+    `</table>${TL[id] ? `<h4>Timeline</h4><div id="tl-slot"></div>` : ""}${feedBox(n)}${seenBox(n)}${MARK_NODES.has(n.type) ? verdictBox(n) : ""}
+    <h4>Properties</h4><table>${Object.entries(p).filter(([k]) => !INTERNAL.has(k)).map(([k,v]) => `<tr><td class="k">${esc(k)}</td><td>${fmt(k,v)}</td></tr>`).join("")}</table>`;
+  const pane = document.getElementById("p-node"); pane.innerHTML = h; sectionize(pane);
+  entityHead(n.type, n.type === "Report" ? (p.name || n.value) : n.value, (STYLE[n.type] || {c:"#77746a"}).c);
+  bindPivotBox(pane, n);
+  bindVerdictBox(pane, n);
+  bindCamp(pane);
+  pane.querySelectorAll("[data-pf]").forEach(a => a.onclick = ev => { ev.preventDefault(); setPathEnd(a.dataset.pf, id); });
+  const rx = pane.querySelector("#rxbtn"); if (rx) rx.onclick = () => runRegexes(n.value);
+  pane.querySelectorAll("a[data-id]").forEach(a => a.onclick = ev => { ev.preventDefault(); net.selectNodes([a.dataset.id]); net.focus(a.dataset.id, {scale:1.1, animation:true}); showNode(a.dataset.id); });
+  pane.querySelectorAll("a[data-edge]").forEach(a => a.onclick = ev => { ev.preventDefault(); const i = +a.dataset.edge; net.selectEdges([i]); showEdge(i); });
+  const cpy = pane.querySelector(".copy"); if (cpy) cpy.onclick = () => navigator.clipboard && navigator.clipboard.writeText(n.value);
+  const slot = pane.querySelector("#tl-slot"); if (slot) showTimeline(id, slot);
+  openTab("p-node");
+  ensureVisible(id);
+}
+// ---- fidelity / confidence (scoring.py): numbers, bands and every contributing factor
+const BAND = s => s == null ? "insufficient" : s >= 75 ? "high" : s >= 50 ? "medium" : s >= 25 ? "low" : "very low";
+const scRow = (k, s) => `<div class="sc ${BAND(s).replace(" ", "-")}"><span class="k">${k}</span><span class="v">${s == null ? "n/a" : s}</span>` +
+  `<span class="b" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${s || 0}" aria-label="${k}"><i style="width:${s || 0}%"></i></span><span class="w">${BAND(s)}</span></div>`;
+const fxList = list => `<ul class="fx">${(list || []).map(f => `<li class="${esc(f.kind)}">${f.kind === "term" ? `<span class="p">${f.value}×${f.weight} = ${f.points}</span>` : f.value != null ? `<span class="p">${f.value}</span>` : ""}${esc(f.label)}</li>`).join("")}</ul>`;
+function scoreBox(n) {
+  const s = nscore(n); if (!s) return "";
+  const notes = [...(s.conflicts || []).map(c => `<li class="conflict">${esc(c)}</li>`), ...(s.limited || []).map(l => `<li class="limit">${esc(l)}</li>`)].join("");
+  return `<h4>Fidelity &amp; confidence</h4>${scRow("Fidelity", s.fidelity)}${scRow("Confidence", s.confidence)}
+    <p class="heur">Heuristic 0–100, not a probability.${s.recommend ? " <b>Recommended next pivot.</b>" : ""}${s.stale ? " Newest observation is over a year old." : ""}</p>
+    ${notes ? `<ul class="fx">${notes}</ul>` : ""}
+    <details class="fold"><summary>Why this fidelity</summary>${fxList(s.factors.fidelity)}</details>
+    <details class="fold"><summary>Why this confidence</summary>${fxList(s.factors.confidence)}${
+      s.path && s.path.length > 1 ? `<p class="hint">Strongest chain: ${s.path.map(id => byId[id] ? esc(nodeLabel(byId[id])) : "…").join(" → ")}</p>` : ""}</details>`;
+}
+function linkScoreBox(e) {
+  const s = escore(e); if (!s) return "";
+  return `<h4>Relationship confidence</h4>${scRow("Confidence", s.confidence)}
+    <p class="heur">${s.sources.length ? "Sources: " + esc(s.sources.join(", ")) : "Source not recorded"}${s.last_seen ? " · last observed " + new Date(s.last_seen * 1000).toISOString().slice(0, 10) : " · no date"}${s.stale ? " · <b>stale</b>" : ""}</p>
+    ${fxList([...s.factors, ...(s.limited || []).map(l => ({kind: "limit", label: l}))])}`;
+}
+function queryLinks(q) {
+  const enc = encodeURIComponent(q.query);
+  return q.source === "VT Intelligence" ? [["Open in VT Intelligence", `https://www.virustotal.com/gui/search/${enc}`]]
+       : q.source === "urlscan" ? [["Open in urlscan", `https://urlscan.io/search/#${enc}`]] : [];
+}
+function nodeLink(n) { return `<a href="#" data-id="${esc(n.id)}"><span class="dot" style="background:${(STYLE[n.type]||{}).c||"#999"}"></span> ${esc(n.type)}: ${esc(nodeLabel(n))}</a>`; }
+function showEdge(i) {
+  const e = D.edges[i]; if (!e) return;
+  const a = byId[e.source], b = byId[e.target], q = edgeQuery(e), p = e.props || {};
+  const run = q && D.pivots.find(x => x.query === q.query);
+  let h = `<div class="rel">${nodeLink(a)}<span class="arrow">↓ <b>${esc(e.rel)}</b></span>${nodeLink(b)}</div>`;
+  if (q) {
+    h += `<h4>Pivot query</h4><pre class="query">${esc(q.query)}</pre>
+      <p><button class="btn" id="cpq">Copy</button> ${queryLinks(q).map(([t,u]) => `<a class="btn" href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join(" ")}</p>
+      <table><tr><td class="k">platform</td><td>${esc(q.source)}</td></tr>` +
+      (run ? `<tr><td class="k">pivot kind</td><td>${esc(run.kind)}</td></tr><tr><td class="k">hits</td><td>${esc(run.total)}${run.broad ? " (too broad)" : ""}</td></tr>` : "") +
+      `</table>`;
+  } else {
+    h += `<p class="hint">Direct relationship.</p>`;
+  }
+  h += linkScoreBox(e);
+  const extra = Object.entries(p).filter(([k]) => k !== "score" && (!["query","source"].includes(k) || !q));
+  if (extra.length) h += `<h4>Edge properties</h4><table>` + extra.map(([k,v]) =>
+    `<tr><td class="k">${esc(k)}</td><td>${k==="scan" ? `<a href="https://urlscan.io/result/${esc(v)}/" target="_blank" rel="noopener">${esc(v)}</a>` : fmt(k,v)}</td></tr>`).join("") + `</table>`;
+  const pane = document.getElementById("p-node"); pane.innerHTML = h; sectionize(pane);
+  entityHead("Relationship", e.rel, "#77746a");
+  pane.querySelectorAll("a[data-id]").forEach(x => x.onclick = ev => { ev.preventDefault(); net.selectNodes([x.dataset.id]); net.focus(x.dataset.id, {scale:1.1, animation:true}); showNode(x.dataset.id); });
+  const cp = pane.querySelector("#cpq"); if (cp) cp.onclick = () => { navigator.clipboard && navigator.clipboard.writeText(q.query); cp.textContent = "Copied"; };
+  openTab("p-node");
+}
+net.on("click", p => {
+  const k = p.event && p.event.srcEvent;
+  if (p.nodes.length && k && (k.shiftKey || k.altKey)) return setPathEnd(k.shiftKey ? "a" : "b", p.nodes[0]);
+  if (p.nodes.length) showNode(p.nodes[0]); else if (p.edges.length) showEdge(p.edges[0]); });
+net.on("doubleClick", p => { if (!p.nodes.length) return; const n = D.nodes.find(x => x.id===p.nodes[0]); const l = links(n); if (l.length) window.open(l[0][1], "_blank"); });
+
+// ---- change timeline: how a host's IP / cert / title / status / ... evolved over time
+let TL = D.timelines || {};
+const TL_FIELDS = [["ip","IP address"],["domain","Hostname"],["asn","ASN"],["cert","TLS certificate"],["title","Page title"],
+  ["status","HTTP status"],["server","Server"],["registrar","Registrar"],["nameservers","Name servers"],["reported","Reported in"]];
+const POINT_FIELDS = new Set(["reported"]);   // events, not a state that changes: dots at their date, nothing more
+const PAL = ["#e5a23c","#86b4c9","#b996d4","#9dbf93","#c77d86","#6fa9a1","#d8905f","#b3bd6c","#b96b55","#9f8fc8"];
+const day = t => String(t).slice(0,10);
+function showTimeline(id, pane) {
+  if (!TL[id]) { pane.innerHTML = `<p class="hint">No history collected.</p>`; return; }
+  const ev = TL[id], t0 = Date.parse(ev[0].t), t1 = Date.parse(ev[ev.length-1].t), span = Math.max(t1 - t0, 1);
+  const x = t => ((Date.parse(t) - t0) / span * 100).toFixed(2) + "%";
+  let h = `<p class="hint">${ev.length} observations · ${day(ev[0].t)} → ${day(ev[ev.length-1].t)}</p>`;
+  const changes = [];
+  for (const [f, name] of TL_FIELDS) {
+    const obs = ev.filter(e => e[f] !== undefined); if (!obs.length) continue;
+    const vals = new Map();
+    obs.forEach(e => { const v = String(e[f]), c = vals.get(v) || {first:e.t, last:e.t, n:0}; c.last = e.t; c.n++; vals.set(v, c); });
+    const col = v => PAL[[...vals.keys()].indexOf(v) % PAL.length];
+    if (POINT_FIELDS.has(f)) {
+      const dots = obs.map(e => `<span class="tl-dot" style="left:${x(e.t)};background:${T().lead}" title="${esc(day(e.t))} · ${esc(e.src)}\n${esc(e[f])}"></span>`).join("");
+      h += `<div class="tl-lane"><div class="tl-name"><b>${esc(name)}</b><span>${vals.size} report${vals.size > 1 ? "s" : ""}</span></div>
+        <div class="tl-track">${dots}</div>
+        <ul class="tl-vals">${[...obs].sort((a, b) => a.t < b.t ? -1 : 1).map(e => `<li><span class="dot" style="background:${T().lead}"></span><span class="v">${esc(e[f])}</span><span class="d">${day(e.t)} · ${esc(e.src)}</span></li>`).join("")}</ul></div>`;
+      continue;
+    }
+    let track = "", prev = null, segStart = null;
+    obs.forEach((e, i) => {
+      const v = String(e[f]);
+      if (prev !== null && v !== prev.v) {
+        track += `<span class="tl-chg" style="left:${x(e.t)}"></span>`;
+        changes.push({t:e.t, f:name, from:prev.v, to:v, e});
+      }
+      if (prev === null || v !== prev.v) segStart = e.t;
+      const nxt = obs[i+1];
+      if (!nxt || String(nxt[f]) !== v) track += `<span class="tl-seg" style="left:${x(segStart)};width:calc(${x(e.t)} - ${x(segStart)});background:${col(v)}"></span>`;
+      track += `<span class="tl-dot" style="left:${x(e.t)};background:${col(v)}" title="${esc(e.t.replace("T"," ").slice(0,16))} · ${esc(e.src)}\n${esc(name)}: ${esc(v)}"${e.scan ? ` data-scan="${esc(e.scan)}"` : ""}></span>`;
+      prev = {v};
+    });
+    h += `<div class="tl-lane"><div class="tl-name"><b>${esc(name)}</b><span>${vals.size} value${vals.size>1?"s":""}${vals.size>1?" · changed":""}</span></div>
+      <div class="tl-track">${track}</div>
+      <ul class="tl-vals">${[...vals].map(([v,c]) => `<li><span class="dot" style="background:${col(v)}"></span><span class="v">${esc(v)}</span><span class="d">${day(c.first)} → ${day(c.last)} · ${c.n}</span></li>`).join("")}</ul></div>`;
+  }
+  h += `<div class="tl-axis"><span>${day(ev[0].t)}</span><span>${day(ev[ev.length-1].t)}</span></div>`;
+  changes.sort((a,b) => a.t < b.t ? -1 : 1);
+  h += `<h4>Change log (${changes.length})</h4>` + (changes.length ? `<table class="chg">` + changes.map(c =>
+    `<tr><td class="k">${day(c.t)}<br>${esc(c.f)}</td><td><span class="old">${esc(c.from)}</span><br>→ ${esc(c.to)}
+     <br><span class="hint">${esc(c.e.src)}${c.e.scan ? ` · <a href="https://urlscan.io/result/${esc(c.e.scan)}/" target="_blank" rel="noopener">scan ↗</a>` : ""}</span></td></tr>`).join("") + `</table>`
+    : `<p class="hint">No changes observed in this window.</p>`);
+  pane.innerHTML = h;
+  pane.querySelectorAll(".tl-dot[data-scan]").forEach(d => d.onclick = () => window.open(`https://urlscan.io/result/${d.dataset.scan}/`, "_blank"));
+}
+
+// ---- prior public reporting (OTX pulses, ThreatFox, MalwareBazaar)
+const TIMING = {fits:["fits","report date matches when it was used here"],
+  current:["current","on a live feed right now; this case has no usage dates to compare"],
+  earlier:["earlier","reported well before this use: may be a previous owner of the IP / domain"],
+  later:["later","reported long after this use: the IP may have been reassigned"]};
+function reportedBox(n) {
+  const p = n.props || {};
+  if (n.type === "Report") {
+    const hosts = D.edges.filter(e => e.target === n.id && e.rel === "REPORTED_IN").map(e => [byId[e.source], e.props || {}]).filter(x => x[0]);
+    return `<h4>Report</h4><table>${[["source",p.source],["reported",p.date ? new Date(p.date*1000).toISOString().slice(0,10) : ""],
+      ["actor",p.actor],["malware",(p.malware||[]).join(", ")],["author",p.author]].filter(r => r[1]).map(([k,v]) => `<tr><td class="k">${k}</td><td>${esc(v)}</td></tr>`).join("")}</table>
+      ${(p.references||[]).length ? `<h4>References</h4>` + p.references.map(u => `<div><a href="${esc(u)}" target="_blank" rel="noopener">${esc(u)}</a></div>`).join("") : ""}
+      <h4>IOCs of this case in it (${hosts.length})</h4><ul class="rep-list">${hosts.map(([h, ep]) => `<li>${nodeLink(h)} ${timingTag(ep)}</li>`).join("")}</ul>`;
+  }
+  const reps = D.edges.filter(e => e.source === n.id && e.rel === "REPORTED_IN").map(e => [byId[e.target], e.props || {}]).filter(x => x[0]);
+  if (p.warninglist) return `<p class="hint">Known benign · ${esc(p.warninglist)}</p>`;
+  const extra = p.reported_unlinked ? `<p class="hint">Not attributed: ${esc(p.reported_unlinked)}.</p>` : "";
+  if (!reps.length) return extra;
+  reps.sort((a, b) => (b[0].props.date||0) - (a[0].props.date||0));
+  return `<h4>Previously reported (${reps.length}${p.otx_pulses > reps.length ? ` of ${p.otx_pulses} OTX pulses` : ""})</h4><ul class="rep-list">` +
+    reps.map(([r, ep]) => { const q = r.props || {}, who = [q.actor, ...(q.malware||[])].filter(Boolean).join(", ");
+      return `<li><a href="#" data-id="${esc(r.id)}">${esc(q.name || r.value)}</a> ${timingTag(ep)}
+        <div class="m">${esc(q.source)}${q.date ? " · " + new Date(q.date*1000).toISOString().slice(0,10) : ""}${who ? " · " + esc(who) : ""}${q.url ? ` · <a href="${esc(q.url)}" target="_blank" rel="noopener">open ↗</a>` : ""}</div></li>`; }).join("") + `</ul>` + extra;
+}
+// ---- knowledge base: earlier cases + analyst verdicts
+const tsDay = ts => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : "?";
+function leadBox(n) {
+  const x = (D.new_domains || []).find(l => "Domain:" + l.domain.toLowerCase() === n.id);
+  if (!x) return "";
+  return `<h4>New-domain hunt · ${esc(x.strength)}</h4><ul class="ev">${(x.reasons || []).map(r => `<li>${esc(r)}</li>`).join("")}` +
+    `${x.registered ? `<li>registered ${esc(x.registered)}</li>` : ""}${(x.overlap || []).length ? `<li>overlap: ${esc(x.overlap.join(", "))}</li>` : ""}</ul>` +
+    `<p class="hint">${esc(x.action || "")}. Not confirmed: pivot on it or mark it Confirmed to pull it into the cluster.</p>`;
+}
+function seenBox(n) {
+  const xs = (n.props || {}).seen_in || [];
+  if (!xs.length) return "";
+  return `<h4>Seen in earlier cases (${n.props.seen_cases})</h4><ul class="seen-list">` + xs.map(x => {
+    const concl = [...(x.actors || []), ...(x.families || [])].join(", ");
+    return `<li><code>${esc(x.case)}</code><div class="m">seed ${esc(x.seed || "?")} · ${tsDay(x.date)} · there as ${esc(x.role)}` +
+      `${x.priority ? " · " + esc(x.priority) : ""}${concl ? " · concluded: <b>" + esc(concl) + "</b>" : ""}</div></li>`; }).join("") + `</ul>`;
+}
+function verdictBox(n) {
+  const p = n.props || {}, v = p.analyst_verdict || "";
+  const current = v || p.analyst_actor || p.analyst_family || p.analyst_note
+    ? `<p class="hint" style="margin:0 0 10px">${v === "fp" ? "False positive" : v === "confirmed" ? "Confirmed" : "No verdict"}` +
+      `${p.analyst_actor ? " · actor " + esc(p.analyst_actor) : ""}${p.analyst_family ? " · malware family " + esc(p.analyst_family) : ""}` +
+      `${p.analyst_case ? " · set in " + esc(p.analyst_case) : ""}` +
+      `${p.analyst_note ? "<br>" + esc(p.analyst_note) : ""}</p>` : "";
+  if (!(LIVE && LIVE.kb)) return current ? `<h4>Analyst verdict</h4>${current}` : "";
+  return `<h4>Analyst verdict</h4><div class="pivot-box verdict-box">${current}
+    <div class="row"><button class="btn${v === "confirmed" ? " sel" : ""}" data-verdict="confirmed" title="treat as a seed in every case">Confirmed</button>
+    <button class="btn${v === "fp" ? " sel" : ""}" data-verdict="fp" title="never in a cluster, triaged as noise, in every case">False positive</button>
+    <button class="btn" data-verdict="clear">Clear</button></div>
+    <input id="v-actor" placeholder="actor (e.g. APT28): optional" value="${esc(p.analyst_actor || "")}">
+    <input id="v-family" placeholder="malware family (e.g. Cobalt Strike, Lumma): optional" value="${esc(p.analyst_family || "")}">
+    <textarea id="v-note" placeholder="note: why (optional)">${esc(p.analyst_note || "")}</textarea>
+    <button class="btn primary" data-verdict="keep">Save labels / note</button>
+    <p class="hint" style="margin:10px 0 0">Stored in the knowledge base: applies to every case, now and later.</p></div>`;
+}
+function bindVerdictBox(pane, n) {
+  pane.querySelectorAll("button[data-verdict]").forEach(b => b.onclick = async () => {
+    const kind = b.dataset.verdict, cur = (n.props || {}).analyst_verdict || null;
+    const body = kind === "clear" ? {id:n.id, verdict:null, actor:"", family:"", note:""}
+      : {id:n.id, verdict: kind === "keep" ? cur : kind, actor: pane.querySelector("#v-actor").value,
+         family: pane.querySelector("#v-family").value, note: pane.querySelector("#v-note").value};
+    pane.querySelectorAll("button[data-verdict]").forEach(x => x.disabled = true);
+    try {
+      const r = await fetch("api/verdict", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"}, body: JSON.stringify(body)});
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error || r.status);
+      merge(await (await fetch("api/graph")).json(), n.id);
+      showNode(n.id);
+    } catch (err) {
+      pane.querySelectorAll("button[data-verdict]").forEach(x => x.disabled = false);
+      alert("Verdict not saved: " + err.message);
+    }
+  });
+}
+// ---- public feeds: triage action + noise / reputation / exposure context
+const FEED_PROPS = new Set(["priority","action","action_reasons","feeds_checked","tor_exit","ipsum_lists","spamhaus_drop",
+  "drop_cidr","asn_drop","c2_fronting","open_ports","shodan_tags","cpes","shodan_hostnames","vulns","kev","c2_port_hint",
+  "gn_riot","gn_noise","gn_class","gn_name","gn_last_seen","abuseipdb_score","abuseipdb_reports","abuseipdb_last",
+  "usage_type","urlhaus_urls","urlhaus_online"]);
+function actionBox(n) {
+  const p = n.props || {};
+  if (!p.priority) return "";
+  return `<div class="action ${esc(p.priority)}"><b>${esc(p.priority)} · ${esc(p.action)}</b>` +
+    `<ul class="ev">${(p.action_reasons||[]).map(x => `<li>${esc(x)}</li>`).join("")}</ul></div>`;
+}
+function feedBox(n) {
+  const p = n.props || {}, v = encodeURIComponent(n.value), kev = new Set(p.kev || []);
+  const rows = [
+    ["Tor", p.tor_exit ? "exit node" : ""],
+    ["GreyNoise", p.gn_riot ? `RIOT: ${p.gn_riot}` : p.gn_noise ? `scanner (${p.gn_class || "?"}${p.gn_name ? ", " + p.gn_name : ""}), last seen ${p.gn_last_seen || "?"}` : ""],
+    ["Spamhaus", [p.spamhaus_drop && "DROP " + p.spamhaus_drop, p.asn_drop && "ASN-DROP " + p.asn_drop].filter(Boolean).join(" · ")],
+    ["IPsum", p.ipsum_lists ? `on ${p.ipsum_lists} public blocklists` : ""],
+    ["AbuseIPDB", p.abuseipdb_reports ? `${p.abuseipdb_score}% · ${p.abuseipdb_reports} reports · last ${(p.abuseipdb_last||"").slice(0,10)}` : ""],
+    ["usage", p.usage_type || ""],
+    ["URLhaus", p.urlhaus_urls ? `${p.urlhaus_urls} URL(s), ${p.urlhaus_online || 0} online` : ""],
+    ["fronting", p.c2_fronting || ""],
+    ["ports", (p.open_ports || []).join(", ")],
+    ["C2 port", (p.c2_port_hint || []).join("; ")],
+    ["Shodan tags", (p.shodan_tags || []).join(", ")],
+    ["CVEs", (p.vulns || []).map(c => kev.has(c) ? `<b title="CISA KEV: exploited in the wild">${esc(c)}</b>` : esc(c)).join(", "), true],
+    ["hostnames", (p.shodan_hostnames || []).join(", ")],
+  ].filter(r => r[1]);
+  const links = n.type === "IP" ? [["GreyNoise", `https://viz.greynoise.io/ip/${v}`], ["Shodan", `https://www.shodan.io/host/${v}`],
+    ["AbuseIPDB", `https://www.abuseipdb.com/check/${v}`], ["URLhaus", `https://urlhaus.abuse.ch/host/${v}/`]]
+    : n.type === "Domain" ? [["URLhaus", `https://urlhaus.abuse.ch/host/${v}/`]] : [];
+  if (!rows.length && !links.length) return "";
+  return `<h4>Public feeds</h4>` + (rows.length ? `<table>${rows.map(([k, x, html]) => `<tr><td class="k">${k}</td><td>${html ? x : esc(x)}</td></tr>`).join("")}</table>` : "") +
+    (links.length ? `<p>${links.map(([t, u]) => `<a href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join(" · ")}</p>` : "");
+}
+const timingTag = ep => ep.timing && TIMING[ep.timing] ? `<span class="tfit ${ep.timing}" title="${TIMING[ep.timing][1]}">timing: ${TIMING[ep.timing][0]}</span>` : "";
+
+// pivots & hunting
+function renderPivots() {
+  document.getElementById("npiv").textContent = `(${D.pivots.length})`;
+  document.getElementById("p-pivots").innerHTML = `<table><tr><th>Kind</th><th>Query</th><th>Hits</th></tr>` +
+    D.pivots.map(p => `<tr class="${p.broad && !p.decision ? "broad" : ""}${p.refined_from ? " refine" : ""}"><td class="k">${esc(p.source)}<br>${esc(p.kind)}</td>
+      <td><code>${esc(p.query)}</code>${p.decision ? `<div class="hint">${esc(p.decision)}</div>` : ""}</td><td>${p.total}${p.broad && !p.decision ? "<br>broad" : ""}</td></tr>`).join("") + "</table>";
+  const hunts = D.pivots.filter(p => !p.broad && p.total && p.source==="urlscan" && p.kind!=="host scans")
+    .map(p => ({platform:"urlscan", query:p.query})).concat(D.hunt_queries);
+  const leads = D.new_domains || [], fresh = leads.filter(x => x.new), older = leads.filter(x => !x.new);
+  const leadRows = xs => xs.map(x => { const n = byId["Domain:" + x.domain];
+    return `<tr><td class="k"><span class="badge ${x.strength === "strong" ? "P1" : x.strength === "medium" ? "P2" : "noise"}">${esc(x.strength)}</span></td>
+      <td>${n ? nodeLink(n) : `<code>${esc(x.domain)}</code>`}<div class="hint">${esc(x.reasons.join("; "))}${x.registered ? " · registered " + esc(x.registered) : ""}${(x.overlap||[]).length ? " · overlap " + esc(x.overlap.join(", ")) : ""}</div></td></tr>`; }).join("");
+  document.getElementById("hunt-list").innerHTML =
+    (leads.length ? `<h4>New domains (${fresh.length})</h4>` + (fresh.length ? `<table>${leadRows(fresh)}</table>` : `<p class="hint">Nothing registered recently matches this actor.</p>`)
+      + (older.length ? `<h4>Older domains reusing the kit (${older.length})</h4><table>${leadRows(older)}</table>` : "") : "")
+    + `<h4>Hunting queries</h4>` + (hunts.length ? `<table>` + hunts.map(h =>
+    `<tr><td class="k">${esc(h.platform)}</td><td><code>${esc(h.query)}</code>${h.note ? `<div class="hint">${esc(h.note)}</div>` : ""}</td></tr>`).join("") + "</table>"
+    : `<p class="hint">No hunting queries produced.</p>`);
+  document.getElementById("hunt-list").querySelectorAll("a[data-id]").forEach(a => a.onclick = ev => { ev.preventDefault(); showNode(a.dataset.id); });
+}
+renderPivots();
+
+// ---- interactive pivoting (needs `ioc_investigator.py --serve <case>`)
+let LIVE = null;   // server status once reachable
+const SRC_NAMES = {vt:"VirusTotal", urlscan:"urlscan", pdns:"Passive DNS", ct:"Cert Transparency"};
+// data sources that mean something for a node type
+const srcsFor = t => t === "Certificate" ? ["vt","ct"] : ["vt","urlscan","pdns"];
+const serveCmd = () => `python ioc_investigator.py --serve ${D.case_dir || "cases/<case>"}`;
+function pivotBox(n) {
+  const p = n.props || {}, done = !!p.expanded;
+  if (!LIVE) return "";
+  const srcs = Object.entries(LIVE.sources).filter(([k]) => srcsFor(n.type).includes(k)).map(([k,on]) =>
+    `<label${on ? "" : ' title="not configured on the server"'}><input type="checkbox" data-src="${k}"${on ? " checked" : " disabled"}> ${SRC_NAMES[k]||k}</label>`).join("");
+  const shared = p.shared_hosting || p.broad || (p.pdns_domains||0) > 25;
+  const force = n.type === "Certificate" ? `<label style="margin-bottom:8px"><input type="checkbox" id="pforce"> include names on a shared / CDN certificate${p.shared_cert ? ` <span class="tag">this one is shared · ${p.shared_cert} domains</span>` : ""}</label>`
+    : (n.type === "IP" || n.type === "Domain") ? `<label style="margin-bottom:8px"><input type="checkbox" id="pforce"> include shared hosting / large nameservers${shared ? ` <span class="tag">this one is shared${p.pdns_domains ? " · " + p.pdns_domains + " domains" : ""}</span>` : ""}</label>` : "";
+  const what = {File:"contacted IPs / domains / URLs, dropped files, parents, pages serving it",
+    Domain:"resolutions, subdomains, files, urlscan scans + artefacts, pDNS / NS / MX / SOA",
+    IP:"domains that resolved to it (VT + pDNS), files, urlscan co-hosted sites, ASN",
+    URL:"host, serving IP, downloaded files, redirects",
+    Certificate:"every name on the certificate (SAN), the domain's CT history (subdomains, re-issues), Censys / Shodan / same-key hunt queries"}[n.type];
+  return `<h4>Pivot</h4><div class="pivot-box"><div class="srcs">${srcs}</div>${force}
+    <button class="btn primary" id="pivotbtn">${done ? "Pivot again" : "Pivot on this " + esc(n.type)} ▸</button>
+    ${done ? ' <span class="tag done">already pivoted</span>' : ""}
+    <p class="hint" style="margin:10px 0 0">${esc(what)}</p></div>`;
+}
+function bindPivotBox(pane, n) {
+  const b = pane.querySelector("#pivotbtn"); if (!b) return;
+  b.onclick = () => {
+    const sources = [...pane.querySelectorAll("input[data-src]:checked")].map(x => x.dataset.src);
+    const f = pane.querySelector("#pforce");
+    startPivot(n.id, sources, !!(f && f.checked));
+  };
+}
+const running = new Map();   // job id -> node id
+async function startPivot(id, sources, force) {
+  if (!LIVE) { showNode(id); return; }
+  const n = byId[id];
+  if (!n || !PIVOT_NODES.has(n.type)) return;
+  if ([...running.values()].includes(id)) return;
+  const el = jobCard(`Pivot on ${n.type} <b>${esc(nodeLabel(n))}</b>`);
+  try {
+    const r = await fetch("api/pivot", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"},
+      body: JSON.stringify({id, sources: sources || Object.keys(LIVE.sources).filter(k => LIVE.sources[k] && srcsFor(n.type).includes(k)), force: !!force})});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    running.set(j.job, id);
+    nodes.update({id, borderWidth:4, color:{border:T().accent}, shapeProperties:{borderDashes:[5,4]}});
+    pollJob(j.job, el);
+  } catch (err) { jobDone(el, `Pivot on ${esc(nodeLabel(n))} failed: ${esc(err.message)}`, true); }
+}
+function jobCard(title) {
+  const el = document.createElement("div"); el.className = "job";
+  el.innerHTML = `<span class="x" title="dismiss">×</span><div class="t">${title} <span class="hint">queued…</span></div><div class="l"></div>`;
+  el.querySelector(".x").onclick = () => el.remove();
+  document.getElementById("jobs").appendChild(el); return el;
+}
+function jobDone(el, html, err) {
+  el.classList.toggle("error", !!err); el.querySelector(".t").innerHTML = html; el.querySelector(".l").textContent = "";
+  if (!err) setTimeout(() => el.remove(), 12000);
+}
+async function pollJob(jid, el, title) {
+  let j;
+  try { j = await (await fetch("api/job/" + jid)).json(); } catch (e) { return setTimeout(() => pollJob(jid, el, title), 2500); }
+  const id = running.get(jid), label = title || esc(nodeLabel(byId[id]));
+  if (j.state === "queued" || j.state === "running") {
+    el.querySelector(".hint").textContent = j.state === "queued" ? "waiting for the previous pivot…" : "running…";
+    el.querySelector(".l").textContent = (j.log || []).slice(-1)[0] || "";
+    return setTimeout(() => pollJob(jid, el, title), 1500);
+  }
+  running.delete(jid);
+  if (j.state === "error") { nodes.update(visNode(byId[id])); return jobDone(el, `Pivot on ${label} failed: ${esc(j.error)}`, true); }
+  const ND = await (await fetch("api/graph")).json();
+  const added = merge(ND, id), r = j.result;
+  jobDone(el, `<b>${label}</b>: ${r.direct} related node${r.direct === 1 ? "" : "s"}` +
+    (r.pivot_hits ? `, ${r.pivot_hits} look-alike pivot hit${r.pivot_hits === 1 ? "" : "s"} (shown only if confirmed or with "Show unconfirmed")` : "") +
+    ` · ${added} new in view <a href="#" class="tv">tree ↗</a>`);
+  el.querySelector(".tv").onclick = ev => { ev.preventDefault(); renderTree(id); openTab("p-tree"); };
+  if (!entity.hidden && net.getSelectedNodes()[0] === id) showNode(id);
+}
+// merge a fresh server view into the running page, keeping the current layout
+function merge(ND, anchorId) {
+  const oldIds = new Set(D.nodes.map(n => n.id)), newIds = new Set(ND.nodes.map(n => n.id));
+  const wasVisible = new Set(D.nodes.filter(n => !isHidden(n)).map(n => n.id));
+  Object.assign(D, {nodes:ND.nodes, edges:ND.edges, pivots:ND.pivots, hunt_queries:ND.hunt_queries,
+    timelines:ND.timelines, manual_pivots:ND.manual_pivots, generated:ND.generated, new_domains:ND.new_domains,
+    regex_ladders:ND.regex_ladders, campaign:ND.campaign, scores:ND.scores});
+  updateMeta(); TL = D.timelines || {}; renderCampaign(); renderLadders(); renderSrcFilter();
+  nodes.remove([...oldIds].filter(id => !newIds.has(id)));
+  nodes.update(D.nodes.filter(n => oldIds.has(n.id)).map(visNode));
+  const pos = net.getPositions([anchorId])[anchorId] || {x:0, y:0};
+  const fresh = D.nodes.filter(n => !oldIds.has(n.id));
+  fresh.forEach((n, i) => { const a = 2 * Math.PI * i / Math.max(fresh.length, 1), r = 160 + 40 * (i % 3);
+    nodes.add({...visNode(n), x: pos.x + r * Math.cos(a), y: pos.y + r * Math.sin(a)}); });
+  edges.clear(); edges.add(D.edges.map(visEdge));
+  renderTypes(); renderPivots(); renderTree(anchorId);
+  const shown = D.nodes.filter(n => !isHidden(n) && !wasVisible.has(n.id)).map(n => n.id);
+  settle(D.nodes.filter(n => wasVisible.has(n.id)).map(n => n.id));
+  if (shown.length) { net.selectNodes([anchorId, ...shown]); }
+  renderPathList();
+  if (PATH) findPath(true);
+  return shown.length;
+}
+net.on("oncontext", p => {
+  p.event.preventDefault();
+  const id = net.getNodeAt(p.pointer.DOM); if (!id) return;
+  net.selectNodes([id]); showNode(id);
+  if (LIVE && PIVOT_NODES.has((byId[id]||{}).type)) startPivot(id);
+});
+
+// ---- pivot tree: spanning tree over hosts from the seed, following the analyst's pivots first
+function treeParents() {
+  const adj = {};
+  D.edges.forEach(e => {
+    // hosts only, plus the seed itself when it's an input report (report triage: report -> its IOCs)
+    const ok = id => id === D.seed || HOST_TYPES.has((byId[id]||{}).type);
+    if (!ok(e.source) || !ok(e.target)) return;
+    (adj[e.source] = adj[e.source] || []).push([e.target, e.rel, true]);
+    (adj[e.target] = adj[e.target] || []).push([e.source, e.rel, false]);
+  });
+  const parent = {[D.seed]: null}, via = {}, order = [D.seed];
+  for (let i = 0; i < order.length; i++) {
+    for (const [o, rel, out] of adj[order[i]] || []) {
+      if (o in parent || isHidden(byId[o])) continue;
+      parent[o] = order[i]; via[o] = [rel, out]; order.push(o);
+    }
+  }
+  // a node the analyst reached by pivoting hangs under the node it was pivoted from
+  const under = (x, anc) => { for (; x; x = parent[x]) if (x === anc) return true; return false; };
+  for (const id of order) {
+    const pf = (byId[id].props || {}).pivot_from;
+    if (!pf || pf === parent[id] || !(pf in parent) || under(pf, id)) continue;
+    const e = (adj[id] || []).find(([o]) => o === pf);
+    parent[id] = pf; via[id] = e ? [e[1], !e[2]] : ["pivot", true];
+  }
+  return {parent, via};
+}
+function renderTree(focus) {
+  const pane = document.getElementById("p-tree");
+  const {parent, via} = treeParents(), kids = {};
+  Object.entries(parent).forEach(([c, p]) => { if (p) (kids[p] = kids[p] || []).push(c); });
+  const onPath = new Set(); for (let x = focus; x && x in parent; x = parent[x]) onPath.add(x);
+  const rank = id => { const p = byId[id].props || {}; return [p.expanded ? 0 : 1, -(kids[id]||[]).length, -(p.vt_malicious||0)]; };
+  const cmp = (a, b) => { const ra = rank(a), rb = rank(b); for (let i = 0; i < 3; i++) if (ra[i] !== rb[i]) return ra[i] - rb[i]; return 0; };
+  const row = id => {
+    const n = byId[id], p = n.props || {}, v = via[id];
+    const tag = p.expanded ? `<span class="tag done">pivoted</span>` : (LIVE ? `<button class="btn pv" data-pv="${esc(id)}">pivot</button>` : "");
+    return `<span class="row">${v ? `<span class="via">${v[1] ? "→" : "←"} ${esc(v[0])}</span>` : ""}${nodeLink(n)}
+      ${p.vt_malicious ? `<span class="badge bad">VT ${p.vt_malicious}</span>` : ""}${p.reported ? `<span class="badge rep" title="already in public reporting">reported ×${p.reported}</span>` : ""}${p.priority && p.priority !== "P3" ? `<span class="badge ${esc(p.priority)}" title="${esc(p.action || "")}">${esc(p.priority)}</span>` : ""}${tag}</span>`;
+  };
+  const walk = (id, d) => {
+    const ch = (kids[id] || []).sort(cmp);
+    if (!ch.length) return `<li><span class="leaf"></span>${row(id)}</li>`;
+    const open = d < 1 || onPath.has(id) || (byId[id].props||{}).expanded;
+    return `<li><details${open ? " open" : ""}><summary>${row(id)} <span class="hint">(${ch.length})</span></summary><ul>${ch.map(c => walk(c, d+1)).join("")}</ul></details></li>`;
+  };
+  const orphans = D.nodes.filter(n => HOST_TYPES.has(n.type) && !(n.id in parent) && !isHidden(n)).map(n => n.id);
+  const mp = D.manual_pivots || [];
+  pane.innerHTML = `
+    <ul class="tree">${walk(D.seed, 0)}</ul>` +
+    (orphans.length ? `<h4>Not linked to the seed (${orphans.length})</h4><ul class="tree">${orphans.map(o => `<li><span class="leaf"></span>${row(o)}</li>`).join("")}</ul>` : "") +
+    (mp.length ? `<h4>Pivot history (${mp.length})</h4><table>` + mp.slice().reverse().map(m => `<tr><td class="k">${esc(String(m.at).slice(0,16).replace("T"," "))}</td>
+      <td>${m.type === "regex" ? `urlscan regex: ${(m.patterns||[m.value]).map(x => `<code>${esc(x)}</code>`).join(" ")}` : byId[m.id] ? nodeLink(byId[m.id]) : esc(m.value)}<br><span class="hint">${m.direct} related · ${m.pivot_hits} pivot hits · ${esc((m.sources||[]).join(", "))}${m.force ? " · shared hosting included" : ""}</span></td></tr>`).join("") + `</table>` : "");
+  pane.querySelectorAll("a[data-id]").forEach(x => x.onclick = ev => { ev.preventDefault(); const id = x.dataset.id;
+    const path = []; for (let y = id; y; y = parent[y]) path.push(y);
+    net.selectNodes(path); net.focus(id, {scale:1.1, animation:true}); showNode(id); });
+  pane.querySelectorAll("button[data-pv]").forEach(x => x.onclick = () => { x.disabled = true; x.textContent = "…"; startPivot(x.dataset.pv); });
+}
+renderTree(D.seed);
+
+// ---- tree layout: seed on the left, one column per pivot step
+const treeBox = document.getElementById("treelayout");
+const treeOn = () => treeBox.checked;
+function applyTree() {
+  const {parent} = treeParents(), level = {};
+  const lv = id => id in level ? level[id] : (level[id] = parent[id] ? lv(parent[id]) + 1 : 0);
+  Object.keys(parent).forEach(lv);
+  // artefacts / unlinked nodes sit one column right of the first placed neighbour
+  D.edges.forEach(e => { for (const [a, b] of [[e.source, e.target], [e.target, e.source]])
+    if (!(b in level) && a in level) level[b] = level[a] + 1; });
+  const max = Math.max(0, ...Object.values(level));
+  nodes.update(D.nodes.map(n => ({id:n.id, level: n.id in level ? level[n.id] : max + 1, physics:true})));
+  net.setOptions({layout:{hierarchical:{enabled:true, direction:"LR", levelSeparation:320, nodeSpacing:90, treeSpacing:110, sortMethod:"directed", shakeTowards:"roots"}},
+    physics:{enabled:false}, edges:{smooth:{type:"cubicBezier", forceDirection:"horizontal"}}});
+  fitView();
+}
+treeBox.onchange = () => {
+  if (treeOn()) return applyTree();
+  net.setOptions({layout:{hierarchical:{enabled:false}}, edges:{smooth:{type:"continuous"}}});
+  nodes.update(D.nodes.map(n => ({id:n.id, physics:inCluster(n) || showAll.checked})));
+  settle(); net.once("stabilized", () => fitView());
+};
+
+// ---- graph controls (bottom right)
+function download(name, href) { const a = document.createElement("a"); a.href = href; a.download = name; a.click(); }
+const slug = String(D.title || "graph").replace(/^(?:IOC graph|InfraMapper|InfraMapper)\s*[—-]\s*/, "").replace(/[^\w.-]+/g, "_");
+const CTRL = {
+  zin: () => net.moveTo({scale: net.getScale() * 1.3, animation:{duration:200}}),
+  zout: () => net.moveTo({scale: net.getScale() / 1.3, animation:{duration:200}}),
+  fit: () => fitView(),
+  tree: () => treeBox.click(),
+  labels: () => elabels.click(),
+  png: () => {   // canvas is transparent: paint the theme background under it
+    const src = document.querySelector("#graph canvas"), c = document.createElement("canvas");
+    c.width = src.width; c.height = src.height; const g = c.getContext("2d");
+    g.fillStyle = T().bg; g.fillRect(0, 0, c.width, c.height); g.drawImage(src, 0, 0);
+    download(`${slug}.png`, c.toDataURL("image/png"));
+  },
+  json: () => download(`${slug}.json`, URL.createObjectURL(new Blob([JSON.stringify(D, null, 2)], {type:"application/json"}))),
+  theme: () => setTheme(MODE === "dark" ? "light" : "dark"),
+};
+document.querySelectorAll("#controls [data-c]").forEach(b => b.onclick = () => { CTRL[b.dataset.c](); syncControls(); });
+function syncControls() {
+  document.querySelector('#controls [data-c="tree"]').classList.toggle("on", treeOn());
+  document.querySelector('#controls [data-c="labels"]').classList.toggle("on", elabels.checked);
+}
+[treeBox, elabels].forEach(x => x.addEventListener("change", syncControls));
+syncControls();
+function setTheme(m) {
+  MODE = m; document.documentElement.dataset.theme = m;
+  try { localStorage.setItem("ioci-theme", m); } catch (e) {}
+  nodes.update(D.nodes.map(n => { const v = visNode(n); return {id:n.id, image:v.image, color:v.color, font:v.font, shadow:v.shadow}; }));
+  edges.update(D.edges.map((e, i) => ({id:i, ...edgeTheme(edgeQuery(e))})));
+  if (!entity.hidden) { const sel = net.getSelectedNodes()[0]; if (sel) showNode(sel); }
+  if (PATH) applyPath(visibleIds(), false);
+}
+
+// ---- pathfinding (BloodHound-style): every shortest path between two nodes, over any relationship
+const pathKey = n => `${n.type}: ${n.value}`;
+const visibleIds = () => new Set(D.nodes.filter(n => !isHidden(n)).map(n => n.id));
+function renderPathList() {
+  document.getElementById("pf-list").innerHTML = D.nodes.map(n => `<option value="${esc(pathKey(n))}">`).join("");
+}
+// typed text -> node id: exact "Type: value", else exact value, else a unique substring
+function resolveNode(txt) {
+  const t = txt.trim(), lo = t.toLowerCase();
+  if (!t) return null;
+  const hit = D.nodes.find(n => pathKey(n) === t) || D.nodes.find(n => String(n.value).toLowerCase() === lo);
+  if (hit) return hit.id;
+  const sub = D.nodes.filter(n => pathKey(n).toLowerCase().includes(lo));
+  return sub.length === 1 ? sub[0].id : sub.length ? {many:sub.length} : null;
+}
+function setPathEnd(which, id) {
+  document.getElementById(which === "a" ? "pf-a" : "pf-b").value = pathKey(byId[id]);
+  openTab("p-path");
+  if (document.getElementById("pf-a").value && document.getElementById("pf-b").value) findPath();
+}
+// BFS layers from the start, then every predecessor chain back from the target (capped)
+function shortestPaths(a, b, directed, hostsOnly, cap = 25) {
+  const ok = id => id === a || id === b || !hostsOnly || HOST_TYPES.has((byId[id] || {}).type);
+  const adj = {};
+  D.edges.forEach((e, i) => {
+    if (!ok(e.source) || !ok(e.target)) return;
+    (adj[e.source] = adj[e.source] || []).push([e.target, i]);
+    if (!directed) (adj[e.target] = adj[e.target] || []).push([e.source, i]);
+  });
+  const dist = {[a]: 0}, preds = {[a]: []}, q = [a];
+  for (let k = 0; k < q.length && q[k] !== b; k++) {
+    const u = q[k];
+    for (const [v, i] of adj[u] || []) {
+      if (!(v in dist)) { dist[v] = dist[u] + 1; preds[v] = [[u, i]]; q.push(v); }
+      else if (dist[v] === dist[u] + 1) preds[v].push([u, i]);
+    }
+  }
+  if (!(b in dist)) return [];
+  const out = [];
+  const walk = (v, tail) => {   // tail = [[node, edge to the next node], ..., [b, null]]
+    if (out.length >= cap) return;
+    if (v === a) { out.push(tail); return; }
+    for (const [u, i] of preds[v]) walk(u, [[u, i], ...tail]);
+  };
+  walk(b, [[b, null]]);
+  return out;
+}
+function findPath(silent) {
+  const out = document.getElementById("pf-out");
+  const ra = resolveNode(document.getElementById("pf-a").value), rb = resolveNode(document.getElementById("pf-b").value);
+  const bad = (r, what) => !r ? `${what}: no node matches.` : r.many ? `${what}: ${r.many} nodes match, pick one from the list.` : "";
+  const err = bad(ra, "Start") || bad(rb, "Target") || (ra === rb ? "Start and target are the same node." : "");
+  if (err) { if (!silent) out.innerHTML = `<p class="hint">${esc(err)}</p>`; return; }
+  const before = visibleIds();
+  const paths = shortestPaths(ra, rb, document.getElementById("pf-dir").checked, document.getElementById("pf-hosts").checked);
+  PATH = {a:ra, b:rb, paths, nodes:new Set([ra, rb, ...paths.flat().map(s => s[0])]),
+          edges:new Set(paths.flat().map(s => s[1]).filter(i => i !== null))};
+  applyPath(before, !silent);
+  renderPathResult();
+}
+// path in full colour with its relationships labelled, everything else faded back
+function applyPath(before, fit) {
+  const P = PATH, t = T(), ends = {[P.a]: t.accent, [P.b]: t.lead};
+  nodes.update(D.nodes.map(n => {
+    const v = visNode(n);
+    if (!P.nodes.has(n.id)) return {...v, opacity:0.12, font:{...v.font, color:t.fg + "30"}};
+    return ends[n.id] ? {...v, physics:true, borderWidth:5, color:{...v.color, border:ends[n.id]}, font:{...v.font, size:15}}
+                      : {...v, physics:true, opacity:1};
+  }));
+  edges.clear();   // rebuilt, not updated: vis-network can't drop an edge label through update()
+  edges.add(D.edges.map((e, i) => {
+    const v = visEdge(e, i);
+    return P.edges.has(i) ? {...v, label:e.rel, width:3, dashes:false, physics:true,
+                             color:{color:t.accent, highlight:t.accent, hover:t.accent, inherit:false}, font:{...v.font, color:t.fg, size:11}}
+                          : {...v, label:undefined, color:{...v.color, opacity:0.08}};
+  }));
+  const revealed = [...P.nodes].filter(id => !before.has(id));
+  if (revealed.length) settle([...before]);   // hidden nodes on the path find a place around the fixed layout
+  if (fit) setTimeout(() => fitNodes([...P.nodes]), revealed.length ? 700 : 0);
+}
+// frame some nodes in the space the floating panels leave free
+function fitNodes(ids) {
+  net.fit({nodes:ids, animation:false});
+  const ex = document.getElementById("explore"), en = document.getElementById("entity");
+  const left = ex.classList.contains("collapsed") ? 0 : ex.offsetWidth + 16, right = en.hidden ? 0 : en.offsetWidth + 16;
+  const w = document.getElementById("graph").clientWidth, free = Math.max(240, w - left - right);
+  net.moveTo({position:net.getViewPosition(), scale:Math.min(1.4, net.getScale() * free / w * 0.85),
+              offset:{x:(left - right) / 2, y:0}, animation:{duration:450, easingFunction:"easeInOutQuad"}});
+}
+function clearPath() {
+  document.getElementById("pf-out").innerHTML = "";
+  if (!PATH) return;
+  PATH = null;
+  nodes.update(D.nodes.map(visNode));
+  edges.clear(); edges.add(D.edges.map(visEdge));
+}
+function renderPathResult() {
+  const P = PATH, out = document.getElementById("pf-out"), s = x => x === 1 ? "" : "s";
+  const bind = () => out.querySelectorAll("a[data-id]").forEach(x => x.onclick = ev => {
+    ev.preventDefault(); net.selectNodes([x.dataset.id]); net.focus(x.dataset.id, {scale:1.1, animation:true}); showNode(x.dataset.id); });
+  if (!P.paths.length) {
+    out.innerHTML = `<p class="hint">No path from ${nodeLink(byId[P.a])} to ${nodeLink(byId[P.b])}` +
+      (document.getElementById("pf-dir").checked || document.getElementById("pf-hosts").checked ? `: try without the options above.` : `: they aren't connected in this graph.`) + `</p>`;
+    return bind();
+  }
+  const hops = P.paths[0].length - 1;
+  // a hop walked against the edge's direction shows its arrow reversed
+  const step = (id, i) => { const e = D.edges[i], fwd = e.source === id;
+    return `<span class="pf-rel">${fwd ? "" : "← "}${esc(e.rel)}${fwd ? " →" : ""}</span>`; };
+  out.innerHTML = `<p class="pf-sum"><b>${P.paths.length}${P.paths.length >= 25 ? "+" : ""}</b> shortest path${s(P.paths.length)} · <b>${hops}</b> hop${s(hops)}</p>` +
+    P.paths.slice(0, 10).map((p, k) => `<ol class="pf-path" data-k="${k}">` +
+      p.map(([id, i]) => `<li>${nodeLink(byId[id])}${i !== null ? step(id, i) : ""}</li>`).join("") + `</ol>`).join("") +
+    (P.paths.length > 10 ? `<p class="hint">+ ${P.paths.length - 10} more, all highlighted on the graph.</p>` : "");
+  // hovering one path selects just that one on the graph
+  out.querySelectorAll("ol.pf-path").forEach(ol => {
+    const p = P.paths[+ol.dataset.k];
+    ol.onmouseenter = () => net.setSelection({nodes:p.map(x => x[0]), edges:p.map(x => x[1]).filter(i => i !== null)});
+    ol.onmouseleave = () => net.unselectAll();
+  });
+  bind();
+}
+renderPathList();
+document.getElementById("pf-go").onclick = () => findPath();
+document.getElementById("pf-clear").onclick = clearPath;
+document.getElementById("pf-swap").onclick = () => {
+  const a = document.getElementById("pf-a"), b = document.getElementById("pf-b");
+  [a.value, b.value] = [b.value, a.value];
+  if (PATH) findPath();
+};
+["pf-a", "pf-b"].forEach(id => document.getElementById(id).addEventListener("keydown", ev => { if (ev.key === "Enter") findPath(); }));
+["pf-dir", "pf-hosts"].forEach(id => document.getElementById(id).onchange = () => { if (PATH) findPath(); });
+
+// ---- campaign context: actors / malware families the case's IOCs are tied to (strongest first)
+const STRENGTH = {analyst:"ok", strong:"bad", medium:"P2", "single lead":"noise"};
+function campRow(c) {
+  const i = D.campaign.indexOf(c), k = c.iocs.length;
+  return `<button class="camp" data-camp="${i}" title="named by ${esc(c.sources.join(", "))}"><span class="camp-name">${esc(c.name)}</span>
+    <span class="camp-meta">${c.kind === "actor" ? "actor" : "malware"} · ${k} IOC${k > 1 ? "s" : ""}</span>
+    <span class="badge ${STRENGTH[c.strength] || ""}">${esc(c.strength)}</span></button>`;
+}
+function campaignBox(n) {
+  const cs = (D.campaign || []).filter(c => c.iocs.includes(n.id));
+  return cs.length ? `<h4>Campaign</h4><div class="camp-list">${cs.map(campRow).join("")}</div>` : "";
+}
+function renderCampaign() {
+  const box = document.getElementById("campaign"), cs = D.campaign || [];
+  box.innerHTML = `<h4>Campaign</h4>` + (cs.length ? `<div class="camp-list">${cs.map(campRow).join("")}</div><div id="camp-iocs"></div>`
+    : `<p class="hint">No known campaign, actor or malware family for these IOCs yet.</p>`);
+  bindCamp(box);
+}
+// click: select the IOCs behind the name on the graph (and list them in the overview)
+function bindCamp(box) {
+  box.querySelectorAll("[data-camp]").forEach(b => b.onclick = () => {
+    const c = D.campaign[+b.dataset.camp], ids = c.iocs.filter(id => byId[id]);
+    net.selectNodes(ids); fitNodes(ids);
+    const out = box.querySelector("#camp-iocs"); if (!out) return;
+    out.innerHTML = `<ul class="rep-list">${ids.map(id => `<li>${nodeLink(byId[id])}</li>`).join("")}</ul>` +
+      `<p class="hint">${esc(c.name)} · named by ${esc(c.sources.join(", "))}${c.first ? " · since " + tsDay(c.first) : ""}</p>`;
+    out.querySelectorAll("a[data-id]").forEach(a => a.onclick = ev => { ev.preventDefault(); showNode(a.dataset.id); });
+  });
+}
+
+// ---- regex ladders: broad -> refined from the hits -> best pivot
+function renderLadders() {
+  const box = document.getElementById("ladders"), Ls = (D.regex_ladders || []).slice().reverse();
+  box.innerHTML = Ls.map(L => {
+    const top = Math.log10(Math.max(...L.steps.map(s => s.total)) + 1) || 1, best = L.steps[L.best];
+    const rows = L.steps.map((s, i) => {
+      const st = i === L.best && s.total ? "best" : /dropped/.test(s.decision) ? "dropped" : "";
+      const cond = [...(s.exclude || []).map(a => "not " + a), ...(s.recent ? ["last 90 days"] : [])];
+      return `<li class="ld ${st}"><div class="ld-top"><span class="ld-label">${st === "best" ? "best pivot · " : ""}${esc(s.label)}</span>` +
+        `<span class="ld-n">${s.total >= 10000 ? "10,000+" : s.total.toLocaleString()} hits</span></div>` +
+        `<div class="ld-bar"><i style="width:${Math.max(s.total ? 2 : 0, Math.round(100 * Math.log10(s.total + 1) / top))}%"></i></div>` +
+        `<code>${esc(s.regexes.join("  AND  "))}</code>${cond.length ? `<div class="ld-cond">+ ${esc(cond.join(" · "))}</div>` : ""}` +
+        `<div class="ld-why">${esc(s.why)}</div>` +
+        (st === "dropped" ? `<div class="ld-dec">${esc(s.decision)}</div>`
+          : s.sample.length ? `<div class="ld-sample">${s.sample.slice(0, 4).map(d => `<span>${esc(d)}</span>`).join("")}</div>` : "") + `</li>`;
+    }).join("");
+    return `<div class="ladder"><div class="ld-head">${L.kind === "custom regex" ? "your regex" : "from the actor's names"}` +
+      `${L.keyword ? ` · <code>${esc(L.keyword)}</code>` : ""}${best.total ? "" : " · no hits"}</div><ol>${rows}</ol>` +
+      (best.total ? `<p class="ld-foot"><a href="https://urlscan.io/search/#${encodeURIComponent(best.query)}" target="_blank" rel="noopener">open in urlscan ↗</a>` +
+        ` · <a href="#" data-copyq="${esc(best.query)}">copy query</a></p>` : "") + `</div>`;
+  }).join("");
+  box.querySelectorAll("[data-copyq]").forEach(a => a.onclick = ev => {
+    ev.preventDefault(); navigator.clipboard && navigator.clipboard.writeText(a.dataset.copyq); a.textContent = "copied"; });
+}
+function renderRegexBox() {
+  const box = document.getElementById("regex-box"), on = LIVE && LIVE.sources.urlscan;
+  box.innerHTML = `<h4>Regex hunt</h4>` + (on ? `<div class="regex-box">
+    <textarea id="regex-in" spellcheck="false" placeholder=".*okta.*&#10;.*-okta-[a-z]+\\.com"></textarea>
+    <button class="btn primary" id="regex-run">Run ▸</button> <button class="btn" id="regex-auto" title="broad regex from the cluster's domain names">Auto from the cluster</button>
+    <p class="hint">One regex per line, whole domain name. Each starts broad and is refined from its own hits until it's a usable pivot.</p></div>`
+    : `<p class="hint">${LIVE ? "urlscan isn't configured on the server." : "Starts broad, refines from the hits. Run the case live (--serve) to start new ones."}</p>`);
+  if (!on) return;
+  document.getElementById("regex-run").onclick = () => runRegexes();
+  document.getElementById("regex-auto").onclick = () => runRegexes(null, true);
+}
+// own regexes (from the box), or an automatic ladder from a domain / the cluster
+async function runRegexes(domain, auto) {
+  let body, title;
+  if (domain || auto) {
+    body = domain ? {domain} : {};
+    title = `regex hunt <b>${esc(domain || "from the cluster")}</b>`;
+  } else {
+    const ta = document.getElementById("regex-in"), patterns = ta.value.split("\n").map(x => x.trim()).filter(Boolean);
+    if (!patterns.length) { ta.focus(); return; }
+    body = {patterns};
+    title = `regex hunt <b>${esc(patterns.length === 1 ? patterns[0] : patterns.length + " regexes")}</b>`;
+  }
+  const el = jobCard(title);
+  openTab("p-hunt");
+  try {
+    const r = await fetch("api/regex", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"}, body: JSON.stringify(body)});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    running.set(j.job, D.seed);
+    pollJob(j.job, el, title);
+  } catch (err) { jobDone(el, `Regex hunt failed: ${esc(err.message)}`, true); }
+}
+renderCampaign();
+renderLadders();
+
+// ---- is the pivot server behind this page?
+(async () => {
+  const hint = document.getElementById("livehint");
+  if (location.protocol.startsWith("http")) {
+    try { const r = await fetch("api/status"); if (r.ok) LIVE = await r.json(); } catch (e) {}
+  }
+  hint.innerHTML = LIVE ? `<b>Live</b> · right-click a node to pivot on it.`
+    : `Read-only copy · <a href="#" id="copyserve" title="${esc(serveCmd())}">copy the --serve command</a> to pivot live.`;
+  const cs = document.getElementById("copyserve");
+  if (cs) cs.onclick = ev => { ev.preventDefault(); navigator.clipboard && navigator.clipboard.writeText(serveCmd()); cs.textContent = "copied"; };
+  renderTree(D.seed);
+  renderRegexBox();
+  if (LIVE && LIVE.refreshing) watchRefresh();
+})();
+
+// the server shows the saved case at once and catches up (prior reporting, feeds, VT comments) in the
+// background; merge the result into the open graph when it's done, keeping the layout
+async function watchRefresh() {
+  const el = jobCard("Updating prior reporting, feeds &amp; VT comments in the background");
+  el.querySelector(".hint").textContent = "the graph is usable meanwhile; pivots queue until it's done";
+  for (;;) {
+    await new Promise(r => setTimeout(r, 3000));
+    let s;
+    try { s = await (await fetch("api/status")).json(); } catch (e) { continue; }
+    if (s.refreshing) continue;
+    if (s.refresh_error) return jobDone(el, `Background update failed: ${esc(s.refresh_error)} · showing the saved case`, true);
+    try {
+      const added = merge(await (await fetch("api/graph")).json(), D.seed);
+      return jobDone(el, `Case updated: prior reporting &amp; VT comments refreshed${added ? ` · ${added} new in view` : ""}`);
+    } catch (e) { return jobDone(el, "Case updated · reload the page to see it", true); }
+  }
+}
+</script>
+</body>
+</html>
