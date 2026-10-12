@@ -2,9 +2,9 @@ import json
 import threading
 import time
 
-from ioci import graph as g
-from ioci.investigator import Config, Investigator
-from ioci.server import PivotServer
+from inframapper import graph as g
+from inframapper.investigator import Config, Investigator
+from inframapper.server import PivotServer
 
 
 def make_case(tmp_path):

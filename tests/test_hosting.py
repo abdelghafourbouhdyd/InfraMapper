@@ -1,4 +1,4 @@
-from ioci import hosting
+from inframapper import hosting
 
 D = 86400
 

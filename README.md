@@ -48,11 +48,11 @@ work without a key.
 Web UI:
 
 ```bash
-.venv/bin/python ioc_investigator.py --web     # http://127.0.0.1:8770
+.venv/bin/python infra-mapper.py --web     # http://127.0.0.1:8770
 ```
 
 New investigation, jobs, cases with the live graph, pivot scoring, hunting rules, threat reports, knowledge base and
-API key settings. Local only by default; set `IOCI_WEB_PASSWORD` before using `--web-host 0.0.0.0`.
+API key settings. Local only by default; set `INFRAMAPPER_WEB_PASSWORD` before using `--web-host 0.0.0.0`.
 
 Dashboard:
 
@@ -77,13 +77,13 @@ Report triage (DFIR Report, BengalSEO):
 CLI:
 
 ```bash
-.venv/bin/python ioc_investigator.py evil-login-01[.]pages.dev          # investigate, then open the graph
-.venv/bin/python ioc_investigator.py 45.9.148.12 --depth 2
-.venv/bin/python ioc_investigator.py <sha256> --no-serve                # write the case and exit
-.venv/bin/python ioc_investigator.py --from report.pdf                  # triage a report (file, URL or -)
-.venv/bin/python ioc_investigator.py 1.2.3.4 evil[.]com <sha256>        # several IOCs
-.venv/bin/python ioc_investigator.py corp-sso.com -q 'page.title:"Sign in"' -r '.*-sso-[a-z]+\.com'
-.venv/bin/python ioc_investigator.py --serve cases/<case>               # reopen a case
+.venv/bin/python infra-mapper.py evil-login-01[.]pages.dev          # investigate, then open the graph
+.venv/bin/python infra-mapper.py 45.9.148.12 --depth 2
+.venv/bin/python infra-mapper.py <sha256> --no-serve                # write the case and exit
+.venv/bin/python infra-mapper.py --from report.pdf                  # triage a report (file, URL or -)
+.venv/bin/python infra-mapper.py 1.2.3.4 evil[.]com <sha256>        # several IOCs
+.venv/bin/python infra-mapper.py corp-sso.com -q 'page.title:"Sign in"' -r '.*-sso-[a-z]+\.com'
+.venv/bin/python infra-mapper.py --serve cases/<case>               # reopen a case
 ```
 
 | Flag | Default | |
@@ -118,8 +118,8 @@ Builds a local STIX dataset from 50 research sources (DFIR Report, Unit 42, Mand
 Investigations check their IOCs against it.
 
 ```bash
-.venv/bin/python ioc_investigator.py --ingest                  # last 60 days
-.venv/bin/python ioc_investigator.py --search-reports Lumma
+.venv/bin/python infra-mapper.py --ingest                  # last 60 days
+.venv/bin/python infra-mapper.py --search-reports Lumma
 ```
 
 ## Tests

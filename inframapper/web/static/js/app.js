@@ -4,7 +4,7 @@
   const IO = window.IO = {};
 
   IO.api = async function (method, url, data, isForm) {
-    const opts = {method, headers: {'X-IOCI': '1', 'Accept': 'application/json'}, credentials: 'same-origin'};
+    const opts = {method, headers: {'X-InfraMapper': '1', 'Accept': 'application/json'}, credentials: 'same-origin'};
     if (data !== undefined) {
       if (isForm) opts.body = data;
       else { opts.headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(data); }
@@ -136,7 +136,7 @@
   IO.toggleTheme = function () {
     const cur = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     document.documentElement.setAttribute('data-theme', cur); document.documentElement.setAttribute('data-bs-theme', cur);
-    try { localStorage.setItem('ioci-theme', cur); } catch (e) {}
+    try { localStorage.setItem('inframapper-theme', cur); } catch (e) {}
     const ic = document.getElementById('theme-icon'); if (ic) ic.className = 'bi ' + (cur === 'light' ? 'bi-sun-fill' : 'bi-moon-fill');
   };
   IO.toggleSidebar = function () {

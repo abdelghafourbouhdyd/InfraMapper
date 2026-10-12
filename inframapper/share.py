@@ -126,7 +126,7 @@ def write_stix(inv, path: Path, title: str, tlp: str = "amber") -> int:
                "pattern": pat, "pattern_type": "stix", "valid_from": now,
                "confidence": CONFIDENCE.get(it["priority"], 30),
                "labels": [it["priority"]] + it["families"][:5],
-               "x_ioci_priority": it["priority"], "x_ioci_action": it["action"]}
+               "x_inframapper_priority": it["priority"], "x_inframapper_action": it["action"]}
         if it["refs"]:
             ind["external_references"] = it["refs"]
         objs.append(ind)
@@ -195,12 +195,12 @@ def suricata_rules(items: list[dict]) -> str:
             d = v.lower().replace('"', "")
             for proto, buf in (("dns", "dns.query"), ("tls", "tls.sni"), ("http", "http.host")):
                 src = "$HOME_NET any -> any any" if proto == "dns" else "$HOME_NET any -> $EXTERNAL_NET any"
-                lines.append(f'alert {proto} {src} (msg:"IOCI {pri}{tag} {proto.upper()} {d}"; {buf}; dotprefix; '
+                lines.append(f'alert {proto} {src} (msg:"InfraMapper {pri}{tag} {proto.upper()} {d}"; {buf}; dotprefix; '
                              f'content:".{d}"; nocase; endswith; classtype:trojan-activity; '
-                             f'metadata:ioci_priority {pri}; sid:{sid(proto + d)}; rev:1;)')
+                             f'metadata:inframapper_priority {pri}; sid:{sid(proto + d)}; rev:1;)')
         elif it["type"] == g.IP:
-            lines.append(f'alert ip $HOME_NET any -> {v} any (msg:"IOCI {pri}{tag} traffic to {v}"; '
-                         f'classtype:trojan-activity; metadata:ioci_priority {pri}; sid:{sid("ip" + v)}; rev:1;)')
+            lines.append(f'alert ip $HOME_NET any -> {v} any (msg:"InfraMapper {pri}{tag} traffic to {v}"; '
+                         f'classtype:trojan-activity; metadata:inframapper_priority {pri}; sid:{sid("ip" + v)}; rev:1;)')
     return "\n".join(lines) + "\n"
 
 

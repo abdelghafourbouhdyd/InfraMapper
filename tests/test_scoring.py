@@ -1,6 +1,6 @@
 import time
 
-from ioci import graph as g, scoring
+from inframapper import graph as g, scoring
 
 NOW = time.time()
 DAY = 86400
@@ -104,8 +104,8 @@ def test_recommend_next_pivot():
 
 
 def test_view_data_carries_scores():
-    from ioci.export import view_data
-    from ioci.investigator import Config, Investigator
+    from inframapper.export import view_data
+    from inframapper.investigator import Config, Investigator
     inv = Investigator(None, None, Config(use_vt=False, use_urlscan=False, use_pdns=False))
     inv.seed_id = inv.g.add_node(g.DOMAIN, "seed.example", seed=True)
     ip = inv.g.add_node(g.IP, "192.0.2.1")

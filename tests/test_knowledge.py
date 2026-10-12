@@ -1,10 +1,10 @@
 from pathlib import Path
 
-from ioci import graph as g
-from ioci.export import attribution_votes, case_attribution
-from ioci.feeds import triage
-from ioci.investigator import Config, Investigator
-from ioci.knowledge import Knowledge
+from inframapper import graph as g
+from inframapper.export import attribution_votes, case_attribution
+from inframapper.feeds import triage
+from inframapper.investigator import Config, Investigator
+from inframapper.knowledge import Knowledge
 
 
 def case(tmp_path: Path, name: str, kb: Knowledge) -> Investigator:
@@ -73,7 +73,7 @@ def test_confirmed_is_a_seed_and_actor_label_attributes(tmp_path):
 
 
 def test_family_label(tmp_path):
-    from ioci import share
+    from inframapper import share
     kb = Knowledge(tmp_path / "knowledge.db")
     inv = case(tmp_path, "alpha", kb)
     ip = inv.g.nodes["IP:45.9.148.12"]

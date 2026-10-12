@@ -1,4 +1,4 @@
-from ioci.vtcomments import ActorNames, comment_reports, parse
+from inframapper.vtcomments import ActorNames, comment_reports, parse
 
 
 def actors():
@@ -76,7 +76,7 @@ def test_comment_reports_grouped_and_bulk_dumps_skipped():
 
 
 def test_vt_limiter_bursts_then_waits(monkeypatch):
-    from ioci import clients
+    from inframapper import clients
     now = [1000.0]
     slept = []
     monkeypatch.setattr(clients.time, "time", lambda: now[0])
@@ -90,7 +90,7 @@ def test_vt_limiter_bursts_then_waits(monkeypatch):
 
 
 def test_object_reports_yara_sandbox_av():
-    from ioci.vtcomments import object_reports
+    from inframapper.vtcomments import object_reports
     attrs = {"crowdsourced_yara_results": [
                 {"rule_name": "APT_MAL_Sofacy_Zebrocy_Go", "ruleset_name": "apt_sofacy", "author": "Florian Roth",
                  "match_date": 1700000000, "source": "https://github.com/Neo23x0/signature-base"},
@@ -106,7 +106,7 @@ def test_object_reports_yara_sandbox_av():
 
 
 def test_assessment_strength_uses_independent_groups():
-    from ioci.export import _strength
+    from inframapper.export import _strength
     assert _strength(1, 3) == "medium"      # one sample, YARA + sandbox + AV agree on the family
     assert _strength(3, 1) == "medium"      # three IOCs, all from abuse.ch only
     assert _strength(3, 2) == "strong"
@@ -114,7 +114,7 @@ def test_assessment_strength_uses_independent_groups():
 
 
 def test_article_links_are_reports_not_iocs():
-    from ioci.vtcomments import article_name, is_article
+    from inframapper.vtcomments import article_name, is_article
     jamf = "https://www.jamf.com/blog/macsync-stealer-evolution-code-signed-swift-malware-analysis/"
     zs = "https://www.zscaler.com/blogs/security-research/claudefix-shared-claude-chats-meet-clickfix"
     assert is_article(jamf) and is_article(zs)
@@ -129,8 +129,8 @@ def test_article_links_are_reports_not_iocs():
 
 
 def test_old_case_article_url_becomes_report(tmp_path):
-    from ioci import graph as g
-    from ioci.investigator import Config, Investigator
+    from inframapper import graph as g
+    from inframapper.investigator import Config, Investigator
     inv = Investigator(None, None, Config())
     dom = inv.g.add_node(g.DOMAIN, "clausdoom.es", seed=True)
     inv.seed_id = dom

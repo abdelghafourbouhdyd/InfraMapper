@@ -1,4 +1,4 @@
-from ioci.extract import extract, html_to_text, refang_text
+from inframapper.extract import extract, html_to_text, refang_text
 
 REPORT = """
 The loader (setup.py, payload.zip, invoice.pdf) beacons to hxxps://update-check[.]top/api/v2?id=1 and

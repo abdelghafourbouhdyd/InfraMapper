@@ -1,7 +1,7 @@
 import json
 
-from ioci import cluster, graph as g, share
-from ioci.investigator import Config, Investigator
+from inframapper import cluster, graph as g, share
+from inframapper.investigator import Config, Investigator
 
 
 def batch_case():

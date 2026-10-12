@@ -6,4 +6,4 @@ from rich.logging import RichHandler
 console = Console(stderr=True)
 logging.basicConfig(level="INFO", format="%(message)s", datefmt="%H:%M:%S",
                     handlers=[RichHandler(console=console, show_path=False, markup=True)])
-log = logging.getLogger("ioci")
+log = logging.getLogger("inframapper")

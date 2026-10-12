@@ -1,7 +1,7 @@
 """Background jobs for the web UI.
 
 Investigations, report triage, report ingestion and re-indexing run the real CLI
-(``ioc_investigator.py``) in a subprocess, so the web UI and the command line produce exactly the
+(``infra-mapper.py``) in a subprocess, so the web UI and the command line produce exactly the
 same cases. One job runs at a time (they share the VirusTotal / urlscan quotas); the rest queue.
 Each job's output is streamed into memory and to ``logs/web/<job>.log``.
 """
@@ -34,7 +34,7 @@ class JobRunner:
         self.q: queue.Queue[str] = queue.Queue()
         self.lock = threading.Lock()
         self._load()
-        threading.Thread(target=self._worker, daemon=True, name="ioci-web-jobs").start()
+        threading.Thread(target=self._worker, daemon=True, name="inframapper-web-jobs").start()
 
     # ------------------------------------------------------------------ persistence
     def _load(self) -> None:
@@ -126,13 +126,13 @@ class JobRunner:
     def _run(self, job: dict) -> None:
         before = {p.parent.name for p in self.out.glob("*/graph.json")}
         start = time.time()
-        cmd = [sys.executable, "-X", "utf8", str(self.root / "ioc_investigator.py"), *job["args"]]
+        cmd = [sys.executable, "-X", "utf8", str(self.root / "infra-mapper.py"), *job["args"]]
         env = {**os.environ, "PYTHONIOENCODING": "utf-8", "PYTHONUTF8": "1", "NO_COLOR": "1", "TERM": "dumb",
                "COLUMNS": "400", "PYTHONUNBUFFERED": "1"}
         job.update(state="running", started=datetime.now().isoformat(timespec="seconds"))
         self._save()
         logf = (self.logdir / f"{job['id']}.log").open("w", encoding="utf-8")
-        logf.write("$ ioc_investigator.py " + " ".join(job["args"]) + "\n")
+        logf.write("$ infra-mapper.py " + " ".join(job["args"]) + "\n")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         proc = subprocess.Popen(cmd, cwd=str(self.root), env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                 stderr=subprocess.STDOUT, text=True, encoding="utf-8", errors="replace",

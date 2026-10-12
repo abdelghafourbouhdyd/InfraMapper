@@ -1,11 +1,11 @@
-"""InfraMapper web UI (``python ioc_investigator.py --web``).
+"""InfraMapper web UI (``python infra-mapper.py --web``).
 
 Pages are server-rendered shells (design system in static/css/theme.css); data comes from
 ``/api/*``. Investigations run the real CLI in the background (see jobs.py); the interactive pivot
 graph of a case is the existing ``graph_template.html`` served live under ``/cases/<case>/graph/``.
 
-Security: binds to 127.0.0.1 by default. Set IOCI_WEB_PASSWORD to require a sign-in (mandatory when
-binding to another interface). Every POST must carry ``X-IOCI: 1`` — the same rule as the original
+Security: binds to 127.0.0.1 by default. Set INFRAMAPPER_WEB_PASSWORD to require a sign-in (mandatory when
+binding to another interface). Every POST must carry ``X-InfraMapper: 1`` — the same rule as the original
 pivot server — so a cross-site page can't trigger investigations or pivots.
 """
 
@@ -46,17 +46,17 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
     key_file.parent.mkdir(parents=True, exist_ok=True)
     if not key_file.exists():
         key_file.write_text(secrets.token_hex(32))
-    app.config.update(SECRET_KEY=os.getenv("IOCI_WEB_SECRET") or key_file.read_text().strip(),
+    app.config.update(SECRET_KEY=os.getenv("INFRAMAPPER_WEB_SECRET") or key_file.read_text().strip(),
                       SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", MAX_CONTENT_LENGTH=25 * 1024 * 1024)
     rt = Runtime(root, out)
     if preload:   # warninglists / actor names in the background: the first case opens fast too
         import threading
-        threading.Thread(target=rt.preload, daemon=True, name="ioci-preload").start()
+        threading.Thread(target=rt.preload, daemon=True, name="inframapper-preload").start()
     jobs = JobRunner(root, out)
     keys = KeyChecker(root / ".cache")
     rules = RuleStore(out / "hunt_rules.json")
     md = _md()
-    password = os.getenv("IOCI_WEB_PASSWORD", "")
+    password = os.getenv("INFRAMAPPER_WEB_PASSWORD", "")
     bp = Blueprint("ui", __name__)
 
     # ── auth / csrf ─────────────────────────────────────────────────────────
@@ -68,8 +68,8 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
             if request.path.startswith("/api/") or "/graph/api/" in request.path:
                 return jsonify(error="unauthorized"), 401
             return redirect(url_for("ui.login", next=request.full_path))
-        if request.method == "POST" and request.headers.get("X-IOCI") != "1" and request.endpoint != "ui.logout":
-            return jsonify(error="missing X-IOCI header"), 403
+        if request.method == "POST" and request.headers.get("X-InfraMapper") != "1" and request.endpoint != "ui.logout":
+            return jsonify(error="missing X-InfraMapper header"), 403
         return None
 
     @bp.route("/login", methods=["GET", "POST"])
@@ -705,8 +705,8 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
 
 
 def serve(root: Path, out: Path, host: str = "127.0.0.1", port: int = 8770, open_browser: bool = True) -> None:
-    if host not in ("127.0.0.1", "localhost", "::1") and not os.getenv("IOCI_WEB_PASSWORD"):
-        raise SystemExit("refusing to listen on a non-local address without IOCI_WEB_PASSWORD set")
+    if host not in ("127.0.0.1", "localhost", "::1") and not os.getenv("INFRAMAPPER_WEB_PASSWORD"):
+        raise SystemExit("refusing to listen on a non-local address without INFRAMAPPER_WEB_PASSWORD set")
     app = create_app(root, out, preload=True)
     url = f"http://{host}:{port}/"
     print(f"InfraMapper web UI on {url}  (Ctrl+C to stop)")

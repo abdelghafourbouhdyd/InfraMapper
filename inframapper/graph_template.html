@@ -378,7 +378,7 @@ const THEMES = {
   dark:  {lead:"#5bb8cc", fg:"#d9d4c7", halo:"#0e0f0d", edge:"#3f4038", edgeQ:"#5a594f", elabel:"#a8a395", ebg:"#0e0f0d", ring:"#e8e4d8", accent:"#e5a23c", bad:"#e0482f", broad:"#46473f", bg:"#0e0f0d"},
   light: {lead:"#1f7a8c", fg:"#2a2924", halo:"#f3f2ee", edge:"#c4c1b6", edgeQ:"#a09c90", elabel:"#6a675e", ebg:"#f3f2ee", ring:"#1d1c18", accent:"#b0691a", bad:"#c2412d", broad:"#c9c6bc", bg:"#f3f2ee"},
 };
-let MODE = (() => { try { const t = localStorage.getItem("ioci-theme"); if (t in THEMES) return t; } catch (e) {}
+let MODE = (() => { try { const t = localStorage.getItem("inframapper-theme"); if (t in THEMES) return t; } catch (e) {}
   return matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark"; })();
 document.documentElement.dataset.theme = MODE;
 const T = () => THEMES[MODE];
@@ -893,7 +893,7 @@ function bindVerdictBox(pane, n) {
          family: pane.querySelector("#v-family").value, note: pane.querySelector("#v-note").value};
     pane.querySelectorAll("button[data-verdict]").forEach(x => x.disabled = true);
     try {
-      const r = await fetch("api/verdict", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"}, body: JSON.stringify(body)});
+      const r = await fetch("api/verdict", {method:"POST", headers:{"Content-Type":"application/json", "X-InfraMapper":"1"}, body: JSON.stringify(body)});
       const j = await r.json();
       if (!r.ok) throw new Error(j.error || r.status);
       merge(await (await fetch("api/graph")).json(), n.id);
@@ -963,12 +963,12 @@ function renderPivots() {
 }
 renderPivots();
 
-// ---- interactive pivoting (needs `ioc_investigator.py --serve <case>`)
+// ---- interactive pivoting (needs `infra-mapper.py --serve <case>`)
 let LIVE = null;   // server status once reachable
 const SRC_NAMES = {vt:"VirusTotal", urlscan:"urlscan", pdns:"Passive DNS", ct:"Cert Transparency"};
 // data sources that mean something for a node type
 const srcsFor = t => t === "Certificate" ? ["vt","ct"] : ["vt","urlscan","pdns"];
-const serveCmd = () => `python ioc_investigator.py --serve ${D.case_dir || "cases/<case>"}`;
+const serveCmd = () => `python infra-mapper.py --serve ${D.case_dir || "cases/<case>"}`;
 function pivotBox(n) {
   const p = n.props || {}, done = !!p.expanded;
   if (!LIVE) return "";
@@ -1003,7 +1003,7 @@ async function startPivot(id, sources, force) {
   if ([...running.values()].includes(id)) return;
   const el = jobCard(`Pivot on ${n.type} <b>${esc(nodeLabel(n))}</b>`);
   try {
-    const r = await fetch("api/pivot", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"},
+    const r = await fetch("api/pivot", {method:"POST", headers:{"Content-Type":"application/json", "X-InfraMapper":"1"},
       body: JSON.stringify({id, sources: sources || Object.keys(LIVE.sources).filter(k => LIVE.sources[k] && srcsFor(n.type).includes(k)), force: !!force})});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
@@ -1181,7 +1181,7 @@ function syncControls() {
 syncControls();
 function setTheme(m) {
   MODE = m; document.documentElement.dataset.theme = m;
-  try { localStorage.setItem("ioci-theme", m); } catch (e) {}
+  try { localStorage.setItem("inframapper-theme", m); } catch (e) {}
   nodes.update(D.nodes.map(n => { const v = visNode(n); return {id:n.id, image:v.image, color:v.color, font:v.font, shadow:v.shadow}; }));
   edges.update(D.edges.map((e, i) => ({id:i, ...edgeTheme(edgeQuery(e))})));
   if (!entity.hidden) { const sel = net.getSelectedNodes()[0]; if (sel) showNode(sel); }
@@ -1400,7 +1400,7 @@ async function runRegexes(domain, auto) {
   const el = jobCard(title);
   openTab("p-hunt");
   try {
-    const r = await fetch("api/regex", {method:"POST", headers:{"Content-Type":"application/json", "X-IOCI":"1"}, body: JSON.stringify(body)});
+    const r = await fetch("api/regex", {method:"POST", headers:{"Content-Type":"application/json", "X-InfraMapper":"1"}, body: JSON.stringify(body)});
     const j = await r.json();
     if (!r.ok) throw new Error(j.error || r.status);
     running.set(j.job, D.seed);

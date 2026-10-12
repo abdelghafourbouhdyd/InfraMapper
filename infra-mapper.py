@@ -3,14 +3,14 @@
 InfraMapper — pivot a hash / IP / domain / URL through VirusTotal, urlscan.io and passive DNS
 and build a relationship graph (interactive HTML, JSON, Markdown report).
 
-  python ioc_investigator.py evil-login-01.pages.dev    # investigate, then open the live pivot graph
-  python ioc_investigator.py evil-login-01.pages.dev --no-serve   # batch: write the case and exit
-  python ioc_investigator.py 45.9.148.12 --depth 2
-  python ioc_investigator.py <sha256> --vt-intel
-  python ioc_investigator.py --serve cases/<case>      # click-to-pivot graph on http://127.0.0.1:8765
-  python ioc_investigator.py --from report.pdf          # triage every IOC in a threat report
-  python ioc_investigator.py --from https://vendor.com/blog/new-campaign
-  python ioc_investigator.py 1.2.3.4 evil[.]com <sha256>   # several IOCs = report triage too
+  python infra-mapper.py evil-login-01.pages.dev    # investigate, then open the live pivot graph
+  python infra-mapper.py evil-login-01.pages.dev --no-serve   # batch: write the case and exit
+  python infra-mapper.py 45.9.148.12 --depth 2
+  python infra-mapper.py <sha256> --vt-intel
+  python infra-mapper.py --serve cases/<case>      # click-to-pivot graph on http://127.0.0.1:8765
+  python infra-mapper.py --from report.pdf          # triage every IOC in a threat report
+  python infra-mapper.py --from https://vendor.com/blog/new-campaign
+  python infra-mapper.py 1.2.3.4 evil[.]com <sha256>   # several IOCs = report triage too
 """
 
 import argparse
@@ -34,24 +34,24 @@ from dotenv import load_dotenv
 HERE = Path(__file__).resolve().parent
 load_dotenv(HERE / ".env")
 
-from ioci.clients import Cache, URLScan, VirusTotal  # noqa: E402
-from ioci.intel import PriorReporting, Warninglists  # noqa: E402
-from ioci.export import write_html, write_iocs_csv, write_json, write_report  # noqa: E402
-from ioci.feeds import Feeds  # noqa: E402
-from ioci.investigator import Config, Investigator  # noqa: E402
-from ioci.log import console, log  # noqa: E402
-from ioci.patterns import detect_type  # noqa: E402
-from ioci.pdns import PassiveDNS  # noqa: E402
+from inframapper.clients import Cache, URLScan, VirusTotal  # noqa: E402
+from inframapper.intel import PriorReporting, Warninglists  # noqa: E402
+from inframapper.export import write_html, write_iocs_csv, write_json, write_report  # noqa: E402
+from inframapper.feeds import Feeds  # noqa: E402
+from inframapper.investigator import Config, Investigator  # noqa: E402
+from inframapper.log import console, log  # noqa: E402
+from inframapper.patterns import detect_type  # noqa: E402
+from inframapper.pdns import PassiveDNS  # noqa: E402
 
 
 def knowledge_cmd(args, kb, ap) -> int:
     """--mark / --reindex: knowledge base only, no API calls."""
     if not kb:
         ap.error("--mark / --reindex need the knowledge base (drop --no-kb)")
-    from ioci import graph as g
+    from inframapper import graph as g
     if args.ingest:
-        from ioci.extract import load_tlds
-        from ioci.reports import SOURCES, Ingestor
+        from inframapper.extract import load_tlds
+        from inframapper.reports import SOURCES, Ingestor
         only = [x.strip() for x in args.sources.split(",")] if args.sources else None
         if only and (bad := set(only) - {s[0] for s in SOURCES}):
             ap.error(f"unknown source(s): {', '.join(sorted(bad))}; known: {', '.join(s[0] for s in SOURCES)}")
@@ -90,8 +90,8 @@ def knowledge_cmd(args, kb, ap) -> int:
                      + (f", family {args.family}" if args.family else "")
                      + " (applied to every case; reopen a case with --serve to refresh it)")
         return 0
-    from ioci.export import case_attribution
-    from ioci.server import load_case
+    from inframapper.export import case_attribution
+    from inframapper.server import load_case
     done = 0
     for gj in sorted(args.out.glob("*/graph.json")):
         inv = Investigator(None, None, Config())
@@ -128,9 +128,9 @@ def main() -> int:
     ap.add_argument("--web", action="store_true",
                     help="start the web UI: run investigations and report triage from the browser, browse cases, "
                          "live pivot graphs, verdicts, threat reports (http://127.0.0.1:8770)")
-    ap.add_argument("--web-host", default=os.getenv("IOCI_WEB_HOST", "127.0.0.1"),
-                    help="web UI address (default 127.0.0.1; anything else requires IOCI_WEB_PASSWORD)")
-    ap.add_argument("--web-port", type=int, default=int(os.getenv("IOCI_WEB_PORT", 8770)), help="web UI port (default 8770)")
+    ap.add_argument("--web-host", default=os.getenv("INFRAMAPPER_WEB_HOST", "127.0.0.1"),
+                    help="web UI address (default 127.0.0.1; anything else requires INFRAMAPPER_WEB_PASSWORD)")
+    ap.add_argument("--web-port", type=int, default=int(os.getenv("INFRAMAPPER_WEB_PORT", 8770)), help="web UI port (default 8770)")
     ap.add_argument("--no-serve", action="store_true",
                     help="don't start the live pivot server after the investigation (batch / scripted runs)")
     ap.add_argument("--no-browser", action="store_true", help="start the pivot server but don't open a browser")
@@ -208,7 +208,7 @@ def main() -> int:
                     help="pull recent threat reports (DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET…) into the "
                          "local STIX dataset (./dataset) and the knowledge base, then exit")
     ap.add_argument("--days", type=int, default=60, help="--ingest: how far back (default 60 days)")
-    ap.add_argument("--sources", help="--ingest: comma-separated source slugs (default: all; see ioci/reports.py)")
+    ap.add_argument("--sources", help="--ingest: comma-separated source slugs (default: all; see inframapper/reports.py)")
     ap.add_argument("--recent-reports", type=int, metavar="N", help="list the N most recently ingested reports")
     ap.add_argument("--search-reports", metavar="TERM",
                     help="search the report dataset by IOC, actor, malware family, ATT&CK id, CVE or title words")
@@ -220,7 +220,7 @@ def main() -> int:
     if args.verbose:
         log.setLevel("DEBUG")
     if args.web:
-        from ioci.web.app import serve as serve_web
+        from inframapper.web.app import serve as serve_web
         serve_web(HERE, args.out.resolve(), args.web_host, args.web_port, not args.no_browser)
         return 0
 
@@ -229,7 +229,7 @@ def main() -> int:
         ap.error("give an IOC to investigate, --from REPORT, or --serve CASE_DIR")
     kb = None
     if not args.no_kb:
-        from ioci.knowledge import Knowledge
+        from inframapper.knowledge import Knowledge
         kb = Knowledge(args.out / "knowledge.db")
     if kb_only:
         return knowledge_cmd(args, kb, ap)
@@ -276,14 +276,14 @@ def main() -> int:
     inv = Investigator(vt, us, cfg, pdns, intel, warn, feeds)
     inv.cache_dir, inv.cache, inv.tlp, inv.kb = HERE / ".cache", cache, args.tlp, kb
     if vt and not args.no_intel:   # actor / family names: VT comments, YARA, sandboxes, AV consensus
-        from ioci.extract import load_tlds
-        from ioci.vtcomments import ActorNames
+        from inframapper.extract import load_tlds
+        from inframapper.vtcomments import ActorNames
         inv.actors, inv.tlds = ActorNames(HERE / ".cache"), load_tlds(HERE / ".cache")
     if not args.no_ct:   # certificate pivots from the graph page
-        from ioci.ct import CertTransparency
+        from inframapper.ct import CertTransparency
         inv.ct = CertTransparency(cache, os.getenv("CERTSPOTTER_API_KEY"))
     if args.serve:
-        from ioci.server import PivotServer
+        from inframapper.server import PivotServer
         case_dir = args.serve.resolve()
         if not (case_dir / "graph.json").exists():
             log.error(f"{case_dir} has no graph.json")
@@ -292,7 +292,7 @@ def main() -> int:
         return 0
 
     if args.source or len(args.ioc) > 1:
-        from ioci.extract import extract, load_tlds, read_source
+        from inframapper.extract import extract, load_tlds, read_source
         if args.source:
             try:
                 text, value, exclude, linked = read_source(args.source)
@@ -326,10 +326,10 @@ def main() -> int:
     write_html(inv, outdir / "graph.html", f"InfraMapper — {value}")
     write_report(inv, outdir / "report.md", value)
     write_iocs_csv(inv, outdir / "iocs.csv")
-    from ioci.share import write_all
+    from inframapper.share import write_all
     write_all(inv, outdir, f"InfraMapper — {value}", args.tlp)
     if kb:
-        from ioci.export import case_attribution
+        from inframapper.export import case_attribution
         kb.index_case(inv, outdir, case_attribution(inv))
 
     console.print(f"\n[bold green]done[/] — {len(inv.g.nodes)} nodes, {len(inv.g.edges)} edges "
@@ -345,7 +345,7 @@ def main() -> int:
     if args.no_serve or not sys.stdin.isatty():
         console.print(f"  pivot : {Path(sys.argv[0]).name} --serve {outdir}")
         return 0
-    from ioci.server import PivotServer
+    from inframapper.server import PivotServer
     console.print()
     PivotServer(inv, outdir.resolve(), vt, us, pdns).serve("127.0.0.1", args.port, not args.no_browser)
     return 0

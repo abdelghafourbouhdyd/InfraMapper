@@ -1,8 +1,8 @@
-from ioci import graph as g
-from ioci.investigator import Config, Investigator
-from ioci.knowledge import Knowledge
-from ioci.reports import analyse, parse_feed, to_stix
-from ioci.vtcomments import ActorNames
+from inframapper import graph as g
+from inframapper.investigator import Config, Investigator
+from inframapper.knowledge import Knowledge
+from inframapper.reports import analyse, parse_feed, to_stix
+from inframapper.vtcomments import ActorNames
 
 RSS = b"""<?xml version="1.0"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/"><channel>
 <item><title>Lumma returns</title><link>https://vendor.example/lumma</link>

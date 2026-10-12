@@ -350,8 +350,8 @@ class PivotServer:
             def do_POST(self):
                 # custom header = cross-site pages can't trigger pivots (it forces a CORS preflight
                 # that this server never answers)
-                if self.headers.get("X-IOCI") != "1":
-                    return self._send(403, {"error": "missing X-IOCI header"})
+                if self.headers.get("X-InfraMapper") != "1":
+                    return self._send(403, {"error": "missing X-InfraMapper header"})
                 if self.path not in ("/api/pivot", "/api/verdict", "/api/regex"):
                     return self._send(404, {"error": "not found"})
                 try:

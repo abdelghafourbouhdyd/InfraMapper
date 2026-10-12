@@ -1,6 +1,6 @@
 """In-process runtime for the live pivot graph.
 
-Builds the Investigator and data sources exactly like ``ioc_investigator.py`` does with default
+Builds the Investigator and data sources exactly like ``infra-mapper.py`` does with default
 options (keys from .env), and keeps one ``PivotServer`` per opened case. The PivotServer's HTTP
 server is not started: the web app calls its ``submit`` / ``submit_regex`` / ``verdict`` / ``jobs``
 directly, so the graph page (which calls ``api/...`` relative to its own URL) works unchanged under
@@ -67,7 +67,7 @@ class Runtime:
             pass
 
     def build_investigator(self):
-        """Same wiring as ioc_investigator.main() with default options."""
+        """Same wiring as infra-mapper.py's main() with default options."""
         cache = Cache(self.root / ".cache", 24)
         vt_key, us_key = os.getenv("VT_API_KEY"), os.getenv("URLSCAN_API_KEY")
         vt_backup = [k.strip() for k in os.getenv("VT_API_KEY_BACKUP", "").split(",") if k.strip()]

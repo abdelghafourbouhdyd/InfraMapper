@@ -342,7 +342,7 @@ def to_stix(src_name: str, item: dict, a: dict, attack: Attack) -> dict:
               "object_refs": [o["id"] for o in objs if o["type"] != "identity"] or [ident["id"]],
               "external_references": [_ref(src_name, item["url"])],
               "labels": sorted({*a["actors"], *a["families"]}),
-              **({"x_ioci_fingerprints": [f"{k}:{v}" for k, v in a["fingerprints"]]} if a["fingerprints"] else {})}
+              **({"x_inframapper_fingerprints": [f"{k}:{v}" for k, v in a["fingerprints"]]} if a["fingerprints"] else {})}
     return {"type": "bundle", "id": _sid("bundle", item["url"]), "objects": [report] + objs}
 
 

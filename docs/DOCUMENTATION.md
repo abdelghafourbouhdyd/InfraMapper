@@ -62,8 +62,8 @@ results more complete.
 | `GREYNOISE_API_KEY` | GreyNoise (benign services, mass scanners) | community API, lower limits |
 | `ABUSEIPDB_API_KEY` | AbuseIPDB reputation | not checked |
 | `CERTSPOTTER_API_KEY` | Certificate Transparency, more queries | about 10 queries per hour |
-| `IOCI_WEB_HOST` / `IOCI_WEB_PORT` | web UI address (default `127.0.0.1:8770`) | defaults |
-| `IOCI_WEB_PASSWORD` | web UI sign-in; **required** to listen on anything but localhost | localhost only |
+| `INFRAMAPPER_WEB_HOST` / `INFRAMAPPER_WEB_PORT` | web UI address (default `127.0.0.1:8770`) | defaults |
+| `INFRAMAPPER_WEB_PASSWORD` | web UI sign-in; **required** to listen on anything but localhost | localhost only |
 
 Keyless sources: Feodo Tracker, C2IntelFeeds, OpenPhish, Spamhaus DROP, IPsum, the Tor exit list,
 Shodan InternetDB, MISP warninglists, crt.sh, Cloudflare DNS-over-HTTPS.
@@ -74,30 +74,30 @@ Shodan InternetDB, MISP warninglists, crt.sh, Cloudflare DNS-over-HTTPS.
 
 ```bash
 # one IOC: full investigation, then the live graph opens in your browser
-.venv/bin/python ioc_investigator.py evil-login-01[.]pages.dev
+.venv/bin/python infra-mapper.py evil-login-01[.]pages.dev
 
 # same, but just write the case and exit (scripts, cron)
-.venv/bin/python ioc_investigator.py evil-login-01[.]pages.dev --no-serve
+.venv/bin/python infra-mapper.py evil-login-01[.]pages.dev --no-serve
 
 # go one level deeper
-.venv/bin/python ioc_investigator.py 45.9.148.12 --depth 2
+.venv/bin/python infra-mapper.py 45.9.148.12 --depth 2
 
 # a threat report (file, URL or stdin): extract and triage every IOC in it
-.venv/bin/python ioc_investigator.py --from report.pdf
-.venv/bin/python ioc_investigator.py --from https://thedfirreport.com/2024/08/26/blacksuit-ransomware/
-pbpaste | .venv/bin/python ioc_investigator.py --from -
+.venv/bin/python infra-mapper.py --from report.pdf
+.venv/bin/python infra-mapper.py --from https://thedfirreport.com/2024/08/26/blacksuit-ransomware/
+pbpaste | .venv/bin/python infra-mapper.py --from -
 
 # several IOCs on the command line = report triage
-.venv/bin/python ioc_investigator.py 1.2.3.4 evil[.]com <sha256>
+.venv/bin/python infra-mapper.py 1.2.3.4 evil[.]com <sha256>
 
 # extra urlscan queries and domain-name regexes to pivot on
-.venv/bin/python ioc_investigator.py corp-sso.com -q 'page.title:"Sign in"' -r '.*-sso-[a-z]+\.(com|net)'
+.venv/bin/python infra-mapper.py corp-sso.com -q 'page.title:"Sign in"' -r '.*-sso-[a-z]+\.(com|net)'
 
 # reopen a saved case in the live graph
-.venv/bin/python ioc_investigator.py --serve cases/<case>
+.venv/bin/python infra-mapper.py --serve cases/<case>
 
 # web UI
-.venv/bin/python ioc_investigator.py --web
+.venv/bin/python infra-mapper.py --web
 ```
 
 Each case is saved in `cases/<date>-<time>_<seed>/`.
@@ -605,7 +605,7 @@ For "a vendor just published 60 IOCs: what do I do with them?". Takes a `.txt/.m
 file, a URL, stdin (`-`), or several IOCs on the command line. No crawling: one VT verdict per IOC (at
 most `--batch-vt`, 50) plus live DNS, feeds and prior reporting. Minutes, not hours.
 
-**Extraction rules** (`ioci/extract.py`):
+**Extraction rules** (`inframapper/extract.py`):
 
 | Kept | Dropped |
 |---|---|
@@ -635,7 +635,7 @@ report. Benign IOCs (8.8.8.8, a CDN) are not co-seeds.
 Build it once from existing cases (no API calls):
 
 ```bash
-.venv/bin/python ioc_investigator.py --reindex
+.venv/bin/python infra-mapper.py --reindex
 ```
 
 **Remembered per case:** confirmed and analyst-pivoted IOCs; infrastructure fingerprints (certificate,
@@ -652,9 +652,9 @@ earlier cases** section in `report.md`. Context only; it doesn't change scores.
 graph's Details tab, the web UI, or the terminal:
 
 ```bash
-.venv/bin/python ioc_investigator.py --mark fp       cdn.example.com --note "vendor CDN"
-.venv/bin/python ioc_investigator.py --mark confirmed 198.51.100.23 --actor APT28 --family Zebrocy
-.venv/bin/python ioc_investigator.py --mark clear    198.51.100.23
+.venv/bin/python infra-mapper.py --mark fp       cdn.example.com --note "vendor CDN"
+.venv/bin/python infra-mapper.py --mark confirmed 198.51.100.23 --actor APT28 --family Zebrocy
+.venv/bin/python infra-mapper.py --mark clear    198.51.100.23
 ```
 
 | Verdict | Effect |
@@ -744,10 +744,10 @@ Objective-See, CISA, JPCERT/CC, CERT Polska, CERT-FR, CERT-AGID, NCSC UK) into
 it**: a hit is a Report node and counts as prior reporting (`P2`).
 
 ```bash
-.venv/bin/python ioc_investigator.py --ingest                        # last 60 days, all sources
-.venv/bin/python ioc_investigator.py --ingest --days 14 --sources dfir-report,unit42
-.venv/bin/python ioc_investigator.py --search-reports "Lumma"        # IOC, actor, family, T1566, CVE, title words
-.venv/bin/python ioc_investigator.py --recent-reports 15
+.venv/bin/python infra-mapper.py --ingest                        # last 60 days, all sources
+.venv/bin/python infra-mapper.py --ingest --days 14 --sources dfir-report,unit42
+.venv/bin/python infra-mapper.py --search-reports "Lumma"        # IOC, actor, family, T1566, CVE, title words
+.venv/bin/python infra-mapper.py --recent-reports 15
 ```
 
 **Per article:**
@@ -773,7 +773,7 @@ are cached, so a re-run only fetches new ones.
 ## 17. Web UI
 
 ```bash
-.venv/bin/python ioc_investigator.py --web          # http://127.0.0.1:8770
+.venv/bin/python infra-mapper.py --web          # http://127.0.0.1:8770
 ```
 
 Same engine and same `cases/` folder as the CLI.
@@ -795,8 +795,8 @@ Same engine and same `cases/` folder as the CLI.
 
 ![Pivot results](screenshots/case-pivots.png)
 
-**Security:** listens on 127.0.0.1 only. Every POST needs the `X-IOCI: 1` header. To open it to a network,
-set `IOCI_WEB_PASSWORD` and `--web-host 0.0.0.0`; it refuses a non-local address without a password.
+**Security:** listens on 127.0.0.1 only. Every POST needs the `X-InfraMapper: 1` header. To open it to a network,
+set `INFRAMAPPER_WEB_PASSWORD` and `--web-host 0.0.0.0`; it refuses a non-local address without a password.
 Keys stay in `.env`; the browser only sees the last 4 characters; error messages are scrubbed of keys.
 
 ---
@@ -807,7 +807,7 @@ A normal run opens it automatically when the investigation finishes (`--no-serve
 `--no-browser` to only print the URL). Reopen a case any time:
 
 ```bash
-.venv/bin/python ioc_investigator.py --serve cases/<case>      # http://127.0.0.1:8765 (next free port if taken)
+.venv/bin/python infra-mapper.py --serve cases/<case>      # http://127.0.0.1:8765 (next free port if taken)
 ```
 
 ![Pivot graph](screenshots/graph.png)
@@ -911,7 +911,7 @@ Every pivot and verdict is saved to the case (`graph.json`, `graph.html`, `repor
 |---|---|---|
 | `--ingest` | | pull recent reports, then exit |
 | `--days` | 60 | how far back |
-| `--sources` | all | comma-separated source slugs (see `ioci/reports.py`) |
+| `--sources` | all | comma-separated source slugs (see `inframapper/reports.py`) |
 | `--recent-reports N` | | list the N latest reports |
 | `--search-reports TERM` | | search the dataset |
 

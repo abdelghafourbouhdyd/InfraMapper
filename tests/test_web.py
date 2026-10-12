@@ -2,12 +2,12 @@ import json
 
 import pytest
 
-from ioci import graph as g
-from ioci import keycheck
+from inframapper import graph as g
+from inframapper import keycheck
 
 CASE = "20260101-120000_seed.example"
 SECRET = "vt_secret_value_0123456789abcdef"
-H = {"X-IOCI": "1"}
+H = {"X-InfraMapper": "1"}
 
 
 @pytest.fixture
@@ -15,7 +15,7 @@ def client(tmp_path, monkeypatch):
     for p in keycheck.PROVIDERS:
         for k in p["keys"]:
             monkeypatch.delenv(k, raising=False)
-    monkeypatch.delenv("IOCI_WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("INFRAMAPPER_WEB_PASSWORD", raising=False)
     monkeypatch.setattr(keycheck, "MIN_INTERVAL", 0)
     out = tmp_path / "cases"
     d = out / CASE
@@ -27,7 +27,7 @@ def client(tmp_path, monkeypatch):
     gr.add_edge(seed, ip, "RESOLVES_TO", source="Mnemonic", last_seen=1767225600)
     gr.add_edge(ip, cert, "USES_CERT", seen_by=["urlscan", "VirusTotal"])
     (d / "graph.json").write_text(json.dumps({**gr.to_dict(), "seed": seed}), encoding="utf-8")
-    from ioci.web.app import create_app
+    from inframapper.web.app import create_app
     app = create_app(tmp_path, out)
     app.config["TESTING"] = True
     return app.test_client()

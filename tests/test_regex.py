@@ -1,6 +1,6 @@
-from ioci import graph as g
-from ioci import regex_hunt as rh
-from ioci.investigator import Config, Investigator, regex_query
+from inframapper import graph as g
+from inframapper import regex_hunt as rh
+from inframapper.investigator import Config, Investigator, regex_query
 
 
 def test_regex_query():

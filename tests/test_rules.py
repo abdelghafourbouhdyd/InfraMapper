@@ -1,7 +1,7 @@
 import pytest
 
-from ioci import graph as g, rules
-from ioci.scoring import Scorer
+from inframapper import graph as g, rules
+from inframapper.scoring import Scorer
 
 
 def graph():

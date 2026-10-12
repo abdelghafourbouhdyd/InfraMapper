@@ -15,7 +15,7 @@
   <script>
     (function(){
       var t = 'dark';
-      try { t = localStorage.getItem('ioci-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); } catch (e) {}
+      try { t = localStorage.getItem('inframapper-theme') || (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'); } catch (e) {}
       document.documentElement.setAttribute('data-theme', t);
       document.documentElement.setAttribute('data-bs-theme', t);
     })();
