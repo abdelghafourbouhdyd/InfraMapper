@@ -17,15 +17,16 @@ hunt, or ignore.
 8. [Triage: P1, P2, P3, noise](#8-triage-p1-p2-p3-noise)
 9. [Attribution](#9-attribution)
 10. [Hunts: regex, tightening, new domains, hosting](#10-hunts-regex-tightening-new-domains-hosting)
-11. [Report triage (`--from`)](#11-report-triage---from)
-12. [Knowledge base and analyst verdicts](#12-knowledge-base-and-analyst-verdicts)
-13. [Fidelity and confidence scores](#13-fidelity-and-confidence-scores)
-14. [Output files](#14-output-files)
-15. [Threat report dataset (`--ingest`)](#15-threat-report-dataset---ingest)
-16. [Web UI](#16-web-ui)
-17. [Live pivot graph (`--serve`)](#17-live-pivot-graph---serve)
-18. [All command-line options](#18-all-command-line-options)
-19. [Tests](#19-tests)
+11. [Hunting rules: your own hunting logic](#11-hunting-rules-your-own-hunting-logic)
+12. [Report triage (`--from`)](#12-report-triage---from)
+13. [Knowledge base and analyst verdicts](#13-knowledge-base-and-analyst-verdicts)
+14. [Fidelity and confidence scores](#14-fidelity-and-confidence-scores)
+15. [Output files](#15-output-files)
+16. [Threat report dataset (`--ingest`)](#16-threat-report-dataset---ingest)
+17. [Web UI](#17-web-ui)
+18. [Live pivot graph (`--serve`)](#18-live-pivot-graph---serve)
+19. [All command-line options](#19-all-command-line-options)
+20. [Tests](#20-tests)
 
 ---
 
@@ -117,7 +118,7 @@ In order:
 5. **Check prior reporting and feeds** for every confirmed IOC ([section 7](#7-prior-reporting-and-public-feeds)).
 6. **Triage** every confirmed IOC into `P1`, `P2`, `P3` or `noise` ([section 8](#8-triage-p1-p2-p3-noise)).
 7. **Attribute**: merge every source that names an actor or malware family ([section 9](#9-attribution)).
-8. **Write the case** ([section 14](#14-output-files)), index it in the knowledge base, and open the live graph.
+8. **Write the case** ([section 15](#15-output-files)), index it in the knowledge base, and open the live graph.
 
 API responses are cached in `.cache/` for 24 hours (`--cache-ttl`), so re-running costs no quota.
 
@@ -221,7 +222,7 @@ Every confirmed IOC (up to `--intel-max`, default 200 per run) is checked agains
 | AlienVault OTX pulses | report name and link, adversary, malware family, ATT&CK ids (most vendor reports are mirrored as pulses) | `OTX_API_KEY` |
 | ThreatFox | malware family, C2 tags, first seen | `ABUSECH_API_KEY` |
 | MalwareBazaar (hashes) | family signature, tags, first seen | `ABUSECH_API_KEY` |
-| Local report dataset ([section 15](#15-threat-report-dataset---ingest)) | vendor report, actors, families, the IOC's role | none |
+| Local report dataset ([section 16](#16-threat-report-dataset---ingest)) | vendor report, actors, families, the IOC's role | none |
 | VirusTotal comments | actors, families, co-mentioned IOCs, links to reports (`--vt-comments`, default 10 IOCs, 1 VT call each) | `VT_API_KEY` |
 | VirusTotal YARA, sandboxes, AV consensus (3+ engines), partner context | actor / family names, no extra VT call | `VT_API_KEY` |
 
@@ -455,7 +456,150 @@ Mnemonic's free quota is small; a `MNEMONIC_API_KEY` or CIRCL account makes this
 
 ---
 
-## 11. Report triage (`--from`)
+## 11. Hunting rules: your own hunting logic
+
+Web UI → **Hunting rules**. A rule describes what to look for in your case graphs; you test it, then run
+an action on what it finds. No code needed. Rules are stored in `cases/hunt_rules.json` and apply to every
+case.
+
+Rules run **only when you click Test or Run**. They never run on their own during an investigation.
+
+### Parts of a rule
+
+| Part | Options |
+|---|---|
+| Name, description, category, tags | your labels. Categories: infrastructure, phishing, malware, c2, certificate, dns, reputation, other |
+| Target | the entity type to look at: Domain, IP, URL, File, Certificate, JARM, Favicon, Title, HtmlHash, Script, NameServer, MailServer, SoaEmail, ASN, Report, or **any** |
+| Conditions | up to 20 checks on the entity itself (fields below) |
+| Relations | up to 5 checks on its neighbours in the graph (below) |
+| Match | **all**: every condition and relation must hold. **any**: one is enough |
+| Minimum confidence / fidelity | optional 0–100 gates ([section 14](#14-fidelity-and-confidence-scores)) |
+| Action | what **Run** does with the matches (below) |
+| Enabled | a disabled rule can still be tested, but its action won't run |
+
+### Condition fields
+
+| Field | Type | Example use |
+|---|---|---|
+| `value` | text | the indicator itself: `value` regex `^login-[a-z]+\.` |
+| `tld` | text | `tld` is one of `top, xyz, shop` |
+| `apex` | text | registered domain of a domain / URL |
+| `vt_malicious` | number | VT engines flagging it: `vt_malicious` ≥ 3 |
+| `asn`, `as_owner`, `country` | text | `as_owner` contains `hetzner` |
+| `registrar` | text | `registrar` contains `namecheap` |
+| `age_days` | number | domain age: `age_days` ≤ 30 |
+| `issuer`, `subject_cn` | text | certificate: `issuer` contains `Let's Encrypt` |
+| `san` | list | names on a certificate |
+| `title` | text | page title from urlscan |
+| `file_type`, `name`, `label` | text | file type, file name, VT threat label |
+| `families`, `actors`, `tags` | list | `families` contains `Vidar` |
+| `open_ports`, `cpes` | list | `open_ports` contains `50050` |
+| `priority` | text | `priority` is one of `P1, P2` |
+| `verdict` | text | analyst verdict: `fp` or `confirmed` |
+| `cluster`, `shared_hosting`, `expanded` | yes / no | in the confirmed cluster; shared hosting IP; already pivoted |
+| `confidence`, `fidelity` | number | scores 0–100 |
+| `degree` | number | number of links in the graph |
+| `prop:<name>` | text | any other stored property, e.g. `prop:registrar_url` |
+
+**Operators**
+
+| Field type | Operators |
+|---|---|
+| text | `=`, `≠`, contains, does not contain, starts with, ends with, matches regex, is one of, is not one of, is set, is not set |
+| number | `=`, `≠`, `>`, `≥`, `<`, `≤`, is one of, is not one of, is set, is not set |
+| list | contains, does not contain, `=`, is one of, matches regex, is set, is not set |
+| yes / no | `=` |
+
+### Relations: conditions on neighbours
+
+A relation says: *"this entity has at least **N** neighbours, linked by relation **R** in direction
+**D**, of type **T**, that meet these conditions"*.
+
+| Setting | Options |
+|---|---|
+| Relation | `RESOLVES_TO`, `USES_CERT`, `HAS_JARM`, `CONTACTS`, `DROPS`, `DOWNLOADED_FROM`, `EMBEDS`, `HAS_URL`, `HAS_SUBDOMAIN`, `HOSTED_ON`, `REDIRECTS_TO`, `SERVES`, `SERVED_FROM`, `IN_ASN`, `USES_NS`, `USES_MX`, `SOA_CONTACT`, `HAS_TITLE`, `HAS_FAVICON`, `SERVES_HTML`, `SERVES_SCRIPT`, `REPORTED_IN`, `CO_MENTIONED`, `SEEN_ON`, `MATCHES_PATTERN`, `CNAME_TO`, `LOADS_FROM`, or any |
+| Direction | **out** (this entity → neighbour, e.g. domain `RESOLVES_TO` IP), **in** (neighbour → this entity, e.g. IP `USES_CERT` certificate, seen from the certificate), or either |
+| Neighbour type | any entity type, or any |
+| Minimum | how many matching neighbours are needed (default 1) |
+| Conditions | up to 10, same fields and operators as above, with their own all / any |
+
+### Actions
+
+| Action | What Run does |
+|---|---|
+| **none** | lists the matches only |
+| **pivot** | pivots on the matches with the sources you pick (VT, urlscan, passive DNS, CT). Skips entities already pivoted and types that can't be pivoted (only File, Domain, IP, URL, Certificate can) |
+| **query** | runs a search built from a template on **urlscan** or **VirusTotal Intelligence** (premium key) for each match. Hits join the case and are scored like any pivot |
+
+**Max actions** (default 5, at most 25): how many matches the action runs on. The best matches go first
+(highest fidelity, then confidence).
+
+**Query placeholders**, filled from each match:
+
+| Placeholder | Becomes |
+|---|---|
+| `{value}` | the entity's value |
+| `{host}` | its hostname (for URLs and domains) |
+| `{apex}` | its registered domain |
+| `{prop:name}` | any stored property, e.g. `{prop:urlscan_title}`, `{prop:imphash}`, `{prop:subject_cn}` |
+
+A match where a placeholder has no value is skipped. Examples:
+
+| Platform | Template | Finds |
+|---|---|---|
+| urlscan | `page.title:"{prop:urlscan_title}"` | sites with the same page title |
+| urlscan | `hash:{value}` | same favicon / HTML / script (on those nodes) |
+| urlscan | `page.domain:*{apex}* AND NOT page.domain:{apex}` | look-alikes of the domain |
+| urlscan | `page.ip:"{value}"` | pages served by this IP |
+| VT | `entity:domain jarm:{value}` | domains with this JARM (on JARM nodes) |
+| VT | `entity:file imphash:{prop:imphash}` | files with the same imphash |
+| VT | `entity:ip ssl_subject:{prop:subject_cn}` | IPs serving a certificate with this CN |
+
+### Test and Run
+
+| Button | Scope | What it does |
+|---|---|---|
+| **Test** | all cases or one case; works on an unsaved rule | lists what matches and **why**: every clause that held, with the value it saw. No pivots, no API quota |
+| **Run** | one case | evaluates the rule on the live case, then runs its action on the best matches. New results are saved to the case, scored and triaged |
+
+### Built-in templates
+
+Copy one and adjust it:
+
+| Template | Target | Logic | Action |
+|---|---|---|---|
+| Certificate served by a flagged IP | Certificate | used by an IP with `vt_malicious` ≥ 1 | pivot with CT + VT |
+| Young domain on a confirmed IP | Domain | `age_days` ≤ 60 **and** resolves to a cluster IP that isn't shared hosting or Cloudflare | pivot with VT + urlscan + pDNS |
+| Samples talking to P1/P2 infrastructure | File | contacts a host with `priority` P1 or P2 | none |
+| Phishing kit reuse by page title | Domain | in the cluster, has a title, fidelity ≥ 50 | urlscan `page.title:"{prop:urlscan_title}"` |
+| JARM fingerprint hunt on VT Intelligence | JARM | used by a cluster host | VT `entity:domain jarm:{value}` |
+| Unpivoted high-fidelity leads | any | not pivoted yet, fidelity ≥ 60, confidence ≥ 50 | pivot with all sources |
+
+### Example: Vidar C2 on fresh domains
+
+Goal: find young domains, tied to Vidar, that sit on a dedicated server, and pivot on them.
+
+| Setting | Value |
+|---|---|
+| Target | Domain |
+| Match | all |
+| Condition 1 | `age_days` ≤ 30 |
+| Condition 2 | `families` contains `Vidar` |
+| Relation | `RESOLVES_TO`, out, IP, minimum 1, with `shared_hosting` = no **and** `as_owner` does not contain `cloudflare` |
+| Action | pivot with VT + urlscan + pDNS, max 5 |
+
+**Test** across all cases shows each matching domain with its reasons, for example: `age_days 12 ≤ 30`,
+`families contains Vidar`, `RESOLVES_TO → IP: 1 matching neighbour(s): IP 198.51.100.23`. If the list
+looks right, open a case and **Run**.
+
+### Limits
+
+20 conditions and 5 relations per rule, 10 conditions per relation, 200 values in an "is one of" list,
+regexes up to 300 characters, query templates up to 400 characters, 25 actions per run.
+
+---
+
+## 12. Report triage (`--from`)
 
 For "a vendor just published 60 IOCs: what do I do with them?". Takes a `.txt/.md/.csv/.html/.pdf`
 file, a URL, stdin (`-`), or several IOCs on the command line. No crawling: one VT verdict per IOC (at
@@ -485,7 +629,7 @@ report. Benign IOCs (8.8.8.8, a CDN) are not co-seeds.
 
 ---
 
-## 12. Knowledge base and analyst verdicts
+## 13. Knowledge base and analyst verdicts
 
 `cases/knowledge.db` (SQLite) indexes every case when it's saved and after every pivot or verdict.
 Build it once from existing cases (no API calls):
@@ -525,7 +669,7 @@ graph's Details tab, the web UI, or the terminal:
 
 ---
 
-## 13. Fidelity and confidence scores
+## 14. Fidelity and confidence scores
 
 Two 0–100 scores per entity in the *Pivot results* tab and the graph. They are **explainable heuristics,
 not probabilities**: 80 doesn't mean 80 % likely. Every point is listed in the entity's *Evidence*
@@ -570,7 +714,7 @@ In the graph, link width and opacity follow link confidence (dotted below 25).
 
 ---
 
-## 14. Output files
+## 15. Output files
 
 Each case folder `cases/<date>-<time>_<seed>/`:
 
@@ -588,7 +732,7 @@ Only `P1` / `P2` / `P3` and `lead-strong` / `lead-medium` are exported.
 
 ---
 
-## 15. Threat report dataset (`--ingest`)
+## 16. Threat report dataset (`--ingest`)
 
 Pulls recent research from 33 sources (The DFIR Report, Unit 42, Mandiant, Microsoft, Talos, ESET,
 Securelist, Check Point, Proofpoint, SentinelLabs, Sekoia, Elastic, Zscaler, Huntress, Red Canary,
@@ -645,7 +789,7 @@ Runs are incremental (14-day window, ~30 s), never overlap, and log to `logs/ing
 
 ---
 
-## 16. Web UI
+## 17. Web UI
 
 ```bash
 .venv/bin/python ioc_investigator.py --web          # http://127.0.0.1:8770
@@ -661,7 +805,7 @@ Same engine and same `cases/` folder as the CLI.
 | Cases | every case; per case: report, IOC table (filter, copy, CSV), pivot results, threat reports, live pivot graph, Suricata / IOC lists, exports |
 | Knowledge base | analyst verdicts; rebuild from cases |
 | Threat reports | search the dataset; start an ingestion |
-| Hunting rules | reusable conditions over case graphs (value, TLD, ASN, VT detections, certificate fields, ports, families, priority, scores, relationships). **Test** shows matches and why, without pivoting; **Run** pivots on the best matches. Stored in `cases/hunt_rules.json` |
+| Hunting rules | your own hunting logic: conditions, relations and actions over case graphs; **Test** and **Run** ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
 | API keys & settings | add, test, remove keys per provider; status valid / invalid / quota exhausted / keyless / untested |
 
 ![Dashboard](screenshots/dashboard.png)
@@ -676,7 +820,7 @@ Keys stay in `.env`; the browser only sees the last 4 characters; error messages
 
 ---
 
-## 17. Live pivot graph (`--serve`)
+## 18. Live pivot graph (`--serve`)
 
 A normal run opens it automatically when the investigation finishes (`--no-serve` to skip,
 `--no-browser` to only print the URL). Reopen a case any time:
@@ -702,7 +846,7 @@ Every pivot and verdict is saved to the case (`graph.json`, `graph.html`, `repor
 
 ---
 
-## 18. All command-line options
+## 19. All command-line options
 
 **Input and mode**
 
@@ -802,7 +946,7 @@ Every pivot and verdict is saved to the case (`graph.json`, `graph.html`, `repor
 
 ---
 
-## 19. Tests
+## 20. Tests
 
 ```bash
 .venv/bin/pip install pytest && .venv/bin/python -m pytest -q tests
