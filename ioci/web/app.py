@@ -461,10 +461,10 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
             iocs = rt.kb.report_iocs(r["report_id"], 300)
             matched = set(r["matched"])
             items.append({**{k: r[k] for k in ("report_id", "source", "feed", "title", "url", "published", "actors",
-                                               "families", "ttps", "summary", "n_iocs")},
+                                               "families", "ttps", "n_iocs")},
                           "matched": [{"type": nodes[m]["type"], "value": nodes[m]["value"], "seed": m == seed}
                                       for m in r["matched"] if m in nodes],
-                          "others": [{"type": i["type"], "value": i["value"], "role": i["role"],
+                          "others": [{"type": i["type"], "value": i["value"],
                                       "in_case": i["nid"] in nodes} for i in iocs if i["nid"] not in matched]})
         items.sort(key=lambda x: (not any(m["seed"] for m in x["matched"]), -len(x["matched"]), -(x["published"] or 0)))
         return jsonify(items=items)
@@ -480,10 +480,6 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         src = [s for s in body.get("sources") or [] if s in {x[0] for x in SOURCES}]
         if src:
             args += ["--sources", ",".join(src)]
-        if body.get("ai"):
-            args.append("--ai")
-        if body.get("reingest"):
-            args.append("--reingest")
         return jsonify(jobs.submit("ingest", f"ingest reports ({days} days)", args)), 202
 
     @bp.get("/api/settings")

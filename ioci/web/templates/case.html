@@ -130,11 +130,10 @@
     const r = await IO.get(`/api/cases/${encodeURIComponent(CASE)}/articles`).catch(e => { ART.loaded = false; box.innerHTML = IO.errorBox(e); });
     if (!r) return;
     document.getElementById('n-art').textContent = `(${r.items.length})`;
-    const ioc = (i, cls) => `<span class="mono small wrap-any ${cls || ''}">${esc(i.value)}</span> <span class="small-muted">${esc(i.type)}${i.role ? ', ' + esc(i.role) : ''}${i.in_case ? ', in this case' : ''}</span>`;
+    const ioc = (i, cls) => `<span class="mono small wrap-any ${cls || ''}">${esc(i.value)}</span> <span class="small-muted">${esc(i.type)}${i.in_case ? ', in this case' : ''}</span>`;
     box.innerHTML = r.items.map(x => `<div class="panel"><div class="panel-body">
       <a href="${esc(x.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(x.title)}</b> <i class="bi bi-box-arrow-up-right small"></i></a>
       <div class="small-muted">${x.feed ? `<span class="bpb"><i class="bi bi-rss"></i>${esc(x.feed)}</span> ` : ''}${esc(x.source)} · published ${IO.date(x.published)} · ${x.n_iocs} IOCs${(x.actors.length || x.families.length) ? ' · <b>' + esc([...x.actors, ...x.families].join(', ')) + '</b>' : ''}</div>
-      ${x.summary ? `<div class="small mt-1">${esc(IO.trunc(x.summary, 400))}</div>` : ''}
       <div class="small mt-2"><b>Matching IOC${x.matched.length > 1 ? 's' : ''}</b></div>
       <div>${x.matched.map(m => ioc(m) + (m.seed ? ' <span class="bpb lv-HIGH">seed</span>' : '')).join('<br>')}</div>
       ${x.others.length ? `<details class="mt-2"><summary class="small" style="cursor:pointer"><b>Other IOCs in this article</b> (${x.others.length})

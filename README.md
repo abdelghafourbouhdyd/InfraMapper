@@ -119,7 +119,6 @@ Investigations check their IOCs against it.
 
 ```bash
 .venv/bin/python ioc_investigator.py --ingest                  # last 60 days
-.venv/bin/python ioc_investigator.py --ingest --ai             # enrichment with Claude Code
 .venv/bin/python ioc_investigator.py --search-reports Lumma
 ```
 

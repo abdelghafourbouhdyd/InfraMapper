@@ -43,7 +43,6 @@ from .extract import extract, html_to_text, link_hosts, url_host
 from .log import log
 from .patterns import apex_of
 from .share import TLP, _pattern, _sid
-from .ai import RESEARCH
 from .vtcomments import ActorNames
 
 # slug, display name, feed
@@ -259,22 +258,6 @@ def analyse(item: dict, text: str, links: set[str], names: ActorNames, attack: A
 
 
 # ---------------------------------------------------------------------- STIX
-INDICATES_ROLES = {"c2", "payload", "delivery", "phishing", "exfiltration", "infrastructure", "unknown", None}
-
-
-def merge_ai(a: dict, e: dict, model: str) -> dict:
-    """The validated AI reading wins over the heuristics: what the report is about, TTPs from prose."""
-    a = dict(a)
-    a["ttps"] = sorted(set(a["ttps"]) | set(e["ttps"]))
-    a["ttp_evidence"] = e["ttps"]
-    a["actors"] = sorted({x["name"] for x in e["actors"] if x["confidence"] != "low"})
-    a["families"] = sorted({x["name"] for x in e["families"] if x["confidence"] != "low"})
-    a["mentioned"] = sorted({x["name"] for x in e["actors"] + e["families"] if x["confidence"] == "low"})
-    a["roles"] = e["roles"]
-    a["iocs"] = [(t, v) for t, v in a["iocs"] if e["roles"].get(v) != "benign-reference"]
-    a.update(summary=e["summary"], findings=e["findings"], sectors=e["sectors"], countries=e["countries"],
-             ai_model=model, report_type=e["report_type"])
-    return a
 
 
 def _ref(name: str, url: str | None = None, ext: str | None = None) -> dict:
@@ -306,11 +289,9 @@ def to_stix(src_name: str, item: dict, a: dict, attack: Attack) -> dict:
                                                                 ("SHA-256", v if len(v) == 64 else None)) if h]
             pat = "[" + " OR ".join(parts) + "]" if parts else pat
         if pat:
-            role = a.get("roles", {}).get(v)
             inds.append({"type": "indicator", **base, "id": _sid("indicator", f"{t}:{v.lower()}"), "name": v,
                          "pattern": pat, "pattern_type": "stix", "valid_from": when,
-                         "indicator_types": ["compromised" if role in ("compromised", "victim") else "malicious-activity"],
-                         **({"description": f"{role} in: {item['title']}", "x_ioci_role": role} if role else {})})
+                         "indicator_types": ["malicious-activity"]})
     for kind, v in a["fingerprints"]:
         if kind == "imphash":
             inds.append({"type": "indicator", **base, "id": _sid("indicator", f"imphash:{v}"), "name": f"imphash {v}",
@@ -322,45 +303,35 @@ def to_stix(src_name: str, item: dict, a: dict, attack: Attack) -> dict:
                      "name": f"YARA {rname}", "pattern": y, "pattern_type": "yara", "valid_from": when})
     rels = []
 
-    def rel(kind: str, s: str, d: str, desc: str | None = None) -> None:
+    def rel(kind: str, s: str, d: str) -> None:
         rels.append({"type": "relationship", **base, "id": _sid("relationship", f"{kind}:{s}:{d}"),
-                     "relationship_type": kind, "source_ref": s, "target_ref": d,
-                     **({"description": desc} if desc else {})})
+                     "relationship_type": kind, "source_ref": s, "target_ref": d})
 
-    evidence = {_sid("attack-pattern", t): q for t, q in a.get("ttp_evidence", {}).items()}
-    if len(fams) == 1:   # unambiguous: the report's attacker IOCs are this family's (not victims / compromised)
+    if len(fams) == 1:   # unambiguous: the report's IOCs are this family's
         for i in inds:
-            if i.get("x_ioci_role") in INDICATES_ROLES:
-                rel("indicates", i["id"], fams[0]["id"])
+            rel("indicates", i["id"], fams[0]["id"])
     if len(sets) == 1:
         for x in fams + aps:
-            rel("uses", sets[0]["id"], x["id"], evidence.get(x["id"]))
+            rel("uses", sets[0]["id"], x["id"])
         for vln in vulns:
             rel("targets", sets[0]["id"], vln["id"])
     elif len(fams) == 1:
         for x in aps:
-            rel("uses", fams[0]["id"], x["id"], evidence.get(x["id"]))
+            rel("uses", fams[0]["id"], x["id"])
     objs = [ident] + fams + sets + aps + vulns + inds + rels
     report = {"type": "report", **base, "id": _sid("report", item["url"]), "name": item["title"],
               "published": when, "report_types": ["threat-report"],
               "object_refs": [o["id"] for o in objs if o["type"] != "identity"] or [ident["id"]],
               "external_references": [_ref(src_name, item["url"])],
               "labels": sorted({*a["actors"], *a["families"]}),
-              **({"x_ioci_fingerprints": [f"{k}:{v}" for k, v in a["fingerprints"]]} if a["fingerprints"] else {}),
-              **({"description": a["summary"] + ("\n\nKey findings:\n" + "\n".join(f"- {f}" for f in a["findings"])
-                                                  if a.get("findings") else ""),
-                  "x_ioci_sectors": a.get("sectors", []), "x_ioci_countries": a.get("countries", []),
-                  "x_ioci_mentioned": a.get("mentioned", []), "x_ioci_ai_model": a.get("ai_model"),
-                  "x_ioci_report_type": a.get("report_type")}
-                 if a.get("summary") else {})}
+              **({"x_ioci_fingerprints": [f"{k}:{v}" for k, v in a["fingerprints"]]} if a["fingerprints"] else {})}
     return {"type": "bundle", "id": _sid("bundle", item["url"]), "objects": [report] + objs}
 
 
 # ---------------------------------------------------------------------- ingest
 class Ingestor:
-    def __init__(self, cache_dir: Path, kb, warn, tlds, out_dir: Path, days: int = 60, reingest: bool = False,
-                 ai=None):
-        self.kb, self.warn, self.tlds, self.days, self.reingest, self.ai = kb, warn, tlds, days, reingest, ai
+    def __init__(self, cache_dir: Path, kb, warn, tlds, out_dir: Path, days: int = 60):
+        self.kb, self.warn, self.tlds, self.days = kb, warn, tlds, days
         self.out = out_dir
         self.pages = Cache(cache_dir / "articles", 24 * 3650)   # an article doesn't change: cache for good
         self.names = ActorNames(cache_dir)
@@ -416,7 +387,7 @@ class Ingestor:
             log.warning(f"{name}: bad feed ({exc})")
             return []
         cutoff = time.time() - self.days * 86400
-        todo = [i for i in items if (i["published"] or 0) >= cutoff and (self.reingest or i["url"] not in known)]
+        todo = [i for i in items if (i["published"] or 0) >= cutoff and i["url"] not in known]
         if not todo:
             log.info(f"{name}: nothing new")
             return []
@@ -446,16 +417,8 @@ class Ingestor:
             try:
                 a = analyse(it, clean[it["url"]], art[1], self.names, self.attack, self.warn, self.tlds,
                             self.exclude, template_iocs)
-                if not (a["iocs"] or a["ttps"] or a["yara"] or (self.ai and (a["actors"] or a["families"]))):
+                if not (a["iocs"] or a["ttps"] or a["yara"]):
                     continue   # news / marketing: nothing an investigation can match on
-                if self.ai:
-                    e = self.ai.enrich({**it, "source": name}, clean[it["url"]], a["iocs"], self.attack, self.names)
-                    if e:
-                        a = merge_ai(a, e, self.ai.model)
-                    if not (a["iocs"] or a["yara"]) and a.get("report_type") not in RESEARCH:
-                        continue   # no IOCs: only original research is worth keeping for its TTPs
-                    if not (a["iocs"] or a["ttps"] or a["yara"]):
-                        continue
                 bundle = to_stix(name, it, a, self.attack)
             except Exception as exc:   # one odd article never stops the ingest
                 log.warning(f"{name}: skipped {it['url']} ({type(exc).__name__}: {exc})")
@@ -467,15 +430,15 @@ class Ingestor:
             path.write_text(json.dumps(bundle, indent=1))
             meta = {"report_id": bundle["objects"][0]["id"], "source": name, "title": it["title"], "url": it["url"],
                     "published": it["published"], "actors": a["actors"], "families": a["families"],
-                    "ttps": a["ttps"], "cves": a["cves"], "stix_path": str(path), "summary": a.get("summary")}
-            self.kb.add_report(meta, a["iocs"], a.get("roles", {}))
+                    "ttps": a["ttps"], "cves": a["cves"], "stix_path": str(path)}
+            self.kb.add_report(meta, a["iocs"])
             done.append({**meta, "n_iocs": len(a["iocs"]), "n_yara": len(a["yara"])})
         # articles skipped as news / marketing are re-checked every run (cached): only report real additions
         (log.info if done else log.debug)(f"{name}: {len(done)} reports kept of {len(todo)} new articles")
         return done
 
     def run(self, only: list[str] | None = None) -> list[dict]:
-        known = set() if self.reingest else self.kb.known_report_urls()
+        known = self.kb.known_report_urls()
         todo = [s for s in SOURCES if not only or s[0] in only]
         def one(src):
             try:

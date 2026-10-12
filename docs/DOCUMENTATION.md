@@ -759,18 +759,6 @@ it**: a hit is a Report node and counts as prior reporting (`P2`).
 
 Articles with no IOC, TTP or YARA rule are skipped.
 
-**AI enrichment** (`--ai`, uses your Claude Code login via `claude -p`, no API key; `--ai-model`, default
-sonnet). One call per report, cached. About 15–35 s per report.
-
-| Adds | Kept only if |
-|---|---|
-| TTPs from the behaviour described | the technique exists in ATT&CK and its evidence quote is verbatim in the report |
-| actors / families the report is about, with confidence | the quote is in the report; medium or high confidence |
-| each IOC's role: c2, payload, delivery, phishing, exfiltration, infrastructure, compromised, victim, benign-reference | the extractor found the IOC (the model can't add IOCs); `benign-reference` IOCs are removed |
-| summary, findings, targeted sectors / countries | — |
-
-The model gets **no tools and no MCP servers**: report text is untrusted web content.
-
 **Output:** `dataset/stix/<source>/<date>_<title>.json` (one bundle per report) and `dataset/bundle.json`
 (all reports, deterministic ids). Relationships are only written when unambiguous: an indicator
 `indicates` a family only when the report names exactly one.
@@ -922,8 +910,6 @@ Every pivot and verdict is saved to the case (`graph.json`, `graph.html`, `repor
 | `--ingest` | | pull recent reports, then exit |
 | `--days` | 60 | how far back |
 | `--sources` | all | comma-separated source slugs (see `ioci/reports.py`) |
-| `--reingest` | | re-analyse reports already in the dataset |
-| `--ai` / `--ai-model` | sonnet | enrich with Claude Code |
 | `--recent-reports N` | | list the N latest reports |
 | `--search-reports TERM` | | search the dataset |
 

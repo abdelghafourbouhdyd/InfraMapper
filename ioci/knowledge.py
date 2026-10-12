@@ -112,11 +112,9 @@ class Knowledge:
             return self.db.execute("SELECT COUNT(*) FROM cases").fetchone()[0]
 
     # ------------------------------------------------------------------ published reports (--ingest)
-    def add_report(self, r: dict, iocs: list[tuple[str, str]], roles: dict[str, str] | None = None) -> None:
+    def add_report(self, r: dict, iocs: list[tuple[str, str]]) -> None:
         """r: report_id, source, title, url, published, actors, families, ttps, cves, stix_path, summary,
-        feed (topic feed name; None for vendor research). iocs: [(graph node type, value)];
-        roles: {value: c2 / payload / …} (AI enrichment)."""
-        roles = roles or {}
+        feed (topic feed name; None for vendor research). iocs: [(graph node type, value)]."""
         with self.lock, self.db:
             self.db.execute("DELETE FROM report_iocs WHERE report_id = ?", (r["report_id"],))
             self.db.execute("INSERT OR REPLACE INTO reports (report_id, source, title, url, published, actors, families, "
@@ -127,7 +125,7 @@ class Knowledge:
                              json.dumps(r["cves"]), len(iocs), r.get("stix_path"), int(time.time()), r.get("summary"),
                              r.get("feed")))
             self.db.executemany("INSERT OR IGNORE INTO report_iocs (report_id, nid, type, value, role) VALUES (?, ?, ?, ?, ?)",
-                                [(r["report_id"], g.node_id(t, v), t, v, roles.get(v)) for t, v in iocs])
+                                [(r["report_id"], g.node_id(t, v), t, v, None) for t, v in iocs])
 
     def known_report_urls(self) -> set[str]:
         with self.lock:
@@ -146,7 +144,7 @@ class Knowledge:
     KIND = {"news": " AND r.feed IS NOT NULL", "vendor": " AND r.feed IS NULL"}
 
     def report_hits(self, nid: str) -> list[dict]:
-        """Published reports (local dataset) that list this IOC, with its role there (AI enrichment)."""
+        """Published reports (local dataset) that list this IOC."""
         with self.lock:
             rows = self.db.execute(f"SELECT {self.COLS}, i.role FROM report_iocs i JOIN reports r "
                                    f"ON r.report_id = i.report_id WHERE i.nid = ? ORDER BY r.published DESC", (nid,)).fetchall()

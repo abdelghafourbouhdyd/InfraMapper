@@ -568,10 +568,8 @@ class Investigator:
             out.append({"source": r["source"], "key": f"dataset:{r['report_id']}", "name": r["title"],
                         "date": r["published"], "url": r["url"], "references": [r["url"]],
                         "actor": r["actors"][0] if len(r["actors"]) == 1 else None, "malware": r["families"][:5],
-                        "tags": r["ttps"][:10], "attack": r["ttps"][:20], "summary": r.get("summary"),
-                        "feed": r.get("feed"), "n_iocs": r["n_iocs"], "other_iocs": others,
-                        # the IOC's role in that report (AI): "c2 in <report>" is what an analyst needs
-                        "edge": {"detail": r["role"]} if r.get("role") else {}})
+                        "tags": r["ttps"][:10], "attack": r["ttps"][:20],
+                        "feed": r.get("feed"), "n_iocs": r["n_iocs"], "other_iocs": others})
         return out
 
     def _vt_comments_todo(self) -> list[dict]:
@@ -621,8 +619,7 @@ class Investigator:
                 if known:
                     r.update(name=known["title"], date=known["published"] or r["date"],
                              source=f"VT comment → {known['source']}", malware=known["families"][:5],
-                             actor=known["actors"][0] if len(known["actors"]) == 1 else None,
-                             summary=known.get("summary"))
+                             actor=known["actors"][0] if len(known["actors"]) == 1 else None)
             if self._link_vt_reports(n, reports):
                 hits += 1
                 log.info(escape(f"  VT comments: {ntype} {value} — " + ", ".join(

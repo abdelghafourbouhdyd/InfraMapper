@@ -20,8 +20,6 @@
       <input class="form-control form-control-sm mb-2" type="number" id="days" value="60" min="1" max="365">
       <label class="form-label small-muted">Sources (none selected = all)</label>
       <select class="form-select form-select-sm mb-2" id="sources" multiple size="8"></select>
-      <label class="small d-block"><input type="checkbox" class="form-check-input" id="ai"> Enrich with Claude Code (<code>claude -p</code>): TTPs from prose, actors, IOC roles</label>
-      <label class="small d-block mb-2"><input type="checkbox" class="form-check-input" id="reingest"> Re-analyse reports already ingested</label>
       <button class="btn btn-sm btn-primary w-100" id="ingest"><i class="bi bi-play-fill me-1"></i>Start ingestion</button>
     </div></div>
     <div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-bar-chart"></i>By source</h2></div><div class="panel-body" id="by"></div></div>
@@ -37,7 +35,7 @@
     iocs.forEach(i => (by[i.type] = by[i.type] || []).push(i));
     return Object.entries(by).map(([t, xs]) => `<div class="small mt-1"><b>${esc(t)}</b> <span class="small-muted">(${xs.length})</span>
       <button class="btn btn-xs btn-outline-secondary ms-1" data-copyall="${esc(xs.map(x => x.value).join('\n'))}" title="Copy"><i class="bi bi-clipboard"></i></button>
-      <div class="mono small wrap-any">${xs.map(x => `<a href="#" data-inv="${esc(x.value)}" title="Investigate">${esc(x.value)}</a>${x.role ? ` <span class="small-muted">(${esc(x.role)})</span>` : ''}`).join('<br>')}</div></div>`).join('')
+      <div class="mono small wrap-any">${xs.map(x => `<a href="#" data-inv="${esc(x.value)}" title="Investigate">${esc(x.value)}</a>`).join('<br>')}</div></div>`).join('')
       || '<div class="small-muted small mt-1">No IOC stored.</div>';
   }
   function wire(el) {
@@ -61,7 +59,6 @@
       <div class="small-muted">${x.feed ? `<span class="bpb"><i class="bi bi-rss"></i>${esc(x.feed)}</span> ` : ''}${esc(x.source)} · ${IO.date(x.published)} · ${x.ttps.length} techniques${x.cves.length ? ' · ' + esc(x.cves.slice(0, 4).join(', ')) : ''}</div></div>
       <button class="btn btn-xs btn-outline-secondary text-nowrap" data-rid="${esc(x.report_id)}"><i class="bi bi-list-ul me-1"></i>${x.n_iocs} IOCs</button></div>
       ${(x.actors.length || x.families.length) ? `<div class="chip-list mt-2">${[...x.actors, ...x.families].map(a => `<span class="bpb src">${esc(a)}</span>`).join('')}</div>` : ''}
-      ${x.summary ? `<div class="small mt-2">${esc(IO.trunc(x.summary, 500))}</div>` : ''}
       ${x.ttps.length ? `<div class="small-muted small mt-1 mono">${esc(x.ttps.slice(0, 12).map(t => typeof t === 'object' ? (t.id || JSON.stringify(t)) : t).join(' '))}</div>` : ''}
       <div data-iocs="${esc(x.report_id)}" style="display:none"></div></div></div>`).join('')
       || '<div class="empty-state">No reports' + (q ? ' match.' : ' yet — start an ingestion on the right.') + '</div>';
@@ -79,8 +76,8 @@
   document.getElementById('go').onclick = () => load(document.getElementById('q').value.trim());
   document.getElementById('q').addEventListener('keydown', e => { if (e.key === 'Enter') load(e.target.value.trim()); });
   document.getElementById('ingest').onclick = async () => {
-    try { const j = await IO.post('/api/reports/ingest', {days: +document.getElementById('days').value, ai: document.getElementById('ai').checked,
-      reingest: document.getElementById('reingest').checked, sources: [...document.getElementById('sources').selectedOptions].map(o => o.value)});
+    try { const j = await IO.post('/api/reports/ingest', {days: +document.getElementById('days').value,
+      sources: [...document.getElementById('sources').selectedOptions].map(o => o.value)});
       location.assign('/jobs/' + j.id); } catch (e) { IO.err(e); }
   };
   load('');

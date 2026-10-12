@@ -55,20 +55,9 @@ def knowledge_cmd(args, kb, ap) -> int:
         only = [x.strip() for x in args.sources.split(",")] if args.sources else None
         if only and (bad := set(only) - {s[0] for s in SOURCES}):
             ap.error(f"unknown source(s): {', '.join(sorted(bad))}; known: {', '.join(s[0] for s in SOURCES)}")
-        ai = None
-        if args.ai:
-            from ioci.ai import Enricher
-            try:
-                ai = Enricher(HERE / ".cache", args.ai_model)
-            except RuntimeError as exc:
-                log.error(str(exc))
-                return 1
         ing = Ingestor(HERE / ".cache", kb, Warninglists(HERE / ".cache"), load_tlds(HERE / ".cache"),
-                       HERE / "dataset", args.days, args.reingest, ai)
+                       HERE / "dataset", args.days)
         done = ing.run(only)
-        if ai:
-            log.info(f"AI ({ai.model}): {ai.calls} Claude Code calls, {ai.failed} failed (retried next run)"
-                     + (f": {', '.join(f'{k} ×{v}' for k, v in ai.reasons.items())}" if ai.reasons else ""))
         st = kb.report_stats()
         log.info(f"[bold]ingest[/]: {len(done)} new reports ({sum(d['n_iocs'] for d in done)} IOCs, "
                  f"{sum(len(d['ttps']) for d in done)} technique mappings); dataset: {st['reports']} reports, "
@@ -220,11 +209,6 @@ def main() -> int:
                          "local STIX dataset (./dataset) and the knowledge base, then exit")
     ap.add_argument("--days", type=int, default=60, help="--ingest: how far back (default 60 days)")
     ap.add_argument("--sources", help="--ingest: comma-separated source slugs (default: all; see ioci/reports.py)")
-    ap.add_argument("--reingest", action="store_true", help="--ingest: re-analyse reports already in the dataset")
-    ap.add_argument("--ai", action="store_true",
-                    help="--ingest: enrich each report with Claude Code (headless `claude -p`, your Claude Code login): "
-                         "TTPs from prose, actors / families it's about, IOC roles, summary")
-    ap.add_argument("--ai-model", default="sonnet", help="--ai: Claude model alias (default sonnet)")
     ap.add_argument("--recent-reports", type=int, metavar="N", help="list the N most recently ingested reports")
     ap.add_argument("--search-reports", metavar="TERM",
                     help="search the report dataset by IOC, actor, malware family, ATT&CK id, CVE or title words")
