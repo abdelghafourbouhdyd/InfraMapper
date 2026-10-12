@@ -775,17 +775,8 @@ The model gets **no tools and no MCP servers**: report text is untrusted web con
 (all reports, deterministic ids). Relationships are only written when unambiguous: an indicator
 `indicates` a family only when the report names exactly one.
 
-**Keep it updated:**
-
-```bash
-./update_reports.sh --ai          # run once now, AI-enriched
-./update_reports.sh --install     # cron, every 6 hours (or --install "0 7 * * *")
-./update_reports.sh --status      # schedule + last runs
-./update_reports.sh --uninstall
-```
-
-Runs are incremental (14-day window, ~30 s), never overlap, and log to `logs/ingest.log`. In Claude Code,
-`/update-reports` runs the update and summarises what's new.
+**Keep it updated:** re-run `--ingest` (for example `--ingest --days 14`) whenever you want. Articles already read
+are cached, so a re-run only fetches new ones.
 
 ---
 
