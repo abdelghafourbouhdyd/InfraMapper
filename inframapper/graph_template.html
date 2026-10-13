@@ -422,8 +422,11 @@ function icon(type, fill) {
 }
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const PIVOT_TYPES = new Set(["Pattern", "IntelQuery"]);
+// "rule:<id>" (your pivot logic on the hunting-rules page) -> the rule's name, read from the pivot nodes it created
+const kindLabel = k => { const n = k && k.startsWith("rule:") && D.nodes.find(x => x.props && x.props.kind === k && x.props.rule);
+  return n ? short("Pattern", `rule: ${n.props.rule}`) : k; };
 const nodeQuery = n => n && n.props && (n.props.urlscan_query || n.props.vt_query) || (n && PIVOT_TYPES.has(n.type) ? n.value : "");
-const nodeLabel = n => n.type === "Report" ? short("Pattern", (n.props && n.props.name) || n.value) : PIVOT_TYPES.has(n.type) ? (n.props && n.props.kind ? n.props.kind : n.type) : short(n.type, n.value);
+const nodeLabel = n => n.type === "Report" ? short("Pattern", (n.props && n.props.name) || n.value) : PIVOT_TYPES.has(n.type) ? (n.props && n.props.kind ? kindLabel(n.props.kind) : n.type) : short(n.type, n.value);
 const short = (t, v) => { v = String(v); if (t==="Pattern"||t==="Title") return v.length>38 ? v.slice(0,36)+"…" : v;
   if (t==="URL") return v.replace(/^https?:\/\//,"").slice(0,40); if (/^[a-f0-9]{32,}$/i.test(v)) return v.slice(0,12)+"…";
   if (t==="Certificate") return (v.split("|")[0]).slice(0,30); return v.length>42 ? v.slice(0,40)+"…" : v; };
@@ -604,7 +607,8 @@ document.getElementById("hidestale").onchange = ev => { SCF.stale = ev.target.ch
 document.getElementById("q").addEventListener("keydown", ev => {
   if (ev.key !== "Enter") return;
   const q = ev.target.value.toLowerCase(); if (!q) return;
-  const hit = D.nodes.filter(n => n.value.toLowerCase().includes(q)).map(n => n.id);
+  const hit = D.nodes.filter(n => n.value.toLowerCase().includes(q)
+    || String((n.props && n.props.rule) || "").toLowerCase().includes(q)).map(n => n.id);   // or a hunting rule's name
   if (hit.length) { net.selectNodes(hit); net.fit({nodes:hit, animation:true}); if (hit.length===1) showNode(hit[0]); }
 });
 
@@ -753,7 +757,7 @@ function showEdge(i) {
     h += `<h4>Pivot query</h4><pre class="query">${esc(q.query)}</pre>
       <p><button class="btn" id="cpq">Copy</button> ${queryLinks(q).map(([t,u]) => `<a class="btn" href="${u}" target="_blank" rel="noopener">${t} ↗</a>`).join(" ")}</p>
       <table><tr><td class="k">platform</td><td>${esc(q.source)}</td></tr>` +
-      (run ? `<tr><td class="k">pivot kind</td><td>${esc(run.kind)}</td></tr><tr><td class="k">hits</td><td>${esc(run.total)}${run.broad ? " (too broad)" : ""}</td></tr>` : "") +
+      (run ? `<tr><td class="k">pivot kind</td><td>${esc(kindLabel(run.kind))}</td></tr><tr><td class="k">hits</td><td>${esc(run.total)}${run.broad ? " (too broad)" : ""}</td></tr>` : "") +
       `</table>`;
   } else {
     h += `<p class="hint">Direct relationship.</p>`;
@@ -945,7 +949,7 @@ const timingTag = ep => ep.timing && TIMING[ep.timing] ? `<span class="tfit ${ep
 function renderPivots() {
   document.getElementById("npiv").textContent = `(${D.pivots.length})`;
   document.getElementById("p-pivots").innerHTML = `<table><tr><th>Kind</th><th>Query</th><th>Hits</th></tr>` +
-    D.pivots.map(p => `<tr class="${p.broad && !p.decision ? "broad" : ""}${p.refined_from ? " refine" : ""}"><td class="k">${esc(p.source)}<br>${esc(p.kind)}</td>
+    D.pivots.map(p => `<tr class="${p.broad && !p.decision ? "broad" : ""}${p.refined_from ? " refine" : ""}"><td class="k">${esc(p.source)}<br>${esc(kindLabel(p.kind))}</td>
       <td><code>${esc(p.query)}</code>${p.decision ? `<div class="hint">${esc(p.decision)}</div>` : ""}</td><td>${p.total}${p.broad && !p.decision ? "<br>broad" : ""}</td></tr>`).join("") + "</table>";
   const hunts = D.pivots.filter(p => !p.broad && p.total && p.source==="urlscan" && p.kind!=="host scans")
     .map(p => ({platform:"urlscan", query:p.query})).concat(D.hunt_queries);
