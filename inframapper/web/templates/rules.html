@@ -2,73 +2,32 @@
 {% block content %}
 <div class="page-header">
   <div><h1 class="page-title"><i class="bi bi-funnel-fill me-2"></i>Hunting rules</h1>
-    <div class="page-subtitle">Reusable rules over every case graph: match indicators and their relationships, see exactly why each one matched, then pivot on the best matches with the same engine as the graph page.</div></div>
-  <div class="d-flex gap-2 flex-wrap">
-    <div class="dropdown"><button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown"><i class="bi bi-lightning me-1"></i>Start from template</button>
-      <ul class="dropdown-menu dropdown-menu-end" id="tpl"></ul></div>
-    <button class="btn btn-sm btn-primary" id="new"><i class="bi bi-plus-lg me-1"></i>New rule</button>
-  </div>
+    <div class="page-subtitle">Saved pivoting logic: a query on a platform, rated for fidelity and confidence.</div></div>
+  <button class="btn btn-sm btn-primary" id="new"><i class="bi bi-plus-lg me-1"></i>New rule</button>
 </div>
 
 <div class="grid-main-side">
   <div>
     <div class="panel" id="editor">
-      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-pencil-square"></i><span id="ed-title">New rule</span></h2><span class="panel-meta" id="ed-meta"></span></div>
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-pencil-square"></i><span id="ed-title">New rule</span></h2></div>
       <div class="panel-body">
         <div class="row g-2">
-          <div class="col-md-6"><label class="form-label small-muted" for="r-name">Name *</label><input class="form-control form-control-sm" id="r-name" maxlength="120" placeholder="e.g. Certificates on flagged IPs"></div>
-          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-cat">Category</label><select class="form-select form-select-sm" id="r-cat"></select></div>
-          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-tags">Tags</label><input class="form-control form-control-sm" id="r-tags" placeholder="tls, c2"></div>
-          <div class="col-12"><label class="form-label small-muted" for="r-desc">Description</label><textarea class="form-control form-control-sm" id="r-desc" rows="2" maxlength="2000" placeholder="What this hunts for and why it matters"></textarea></div>
+          <div class="col-md-8"><label class="form-label small-muted" for="r-name">Rule name *</label><input class="form-control form-control-sm" id="r-name" maxlength="120" placeholder="e.g. Phishing kit page title"></div>
+          <div class="col-md-4"><label class="form-label small-muted" for="r-plat">Platform *</label><select class="form-select form-select-sm" id="r-plat"></select></div>
+          <div class="col-12"><label class="form-label small-muted" for="r-query">Query *</label><input class="form-control form-control-sm mono" id="r-query" maxlength="500" placeholder='e.g. page.title:"Sign in" or hash:&lt;favicon hash&gt;'></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-fid">Fidelity *</label><select class="form-select form-select-sm" id="r-fid"></select></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-conf">Confidence *</label><select class="form-select form-select-sm" id="r-conf"></select></div>
         </div>
-        <div class="sec-h mt-3">Match</div>
-        <div class="d-flex flex-wrap gap-2 align-items-center small">
-          Entities of type <select class="form-select form-select-sm" id="r-target" style="width:auto"></select>
-          where <select class="form-select form-select-sm" id="r-match" style="width:auto"><option value="all">all</option><option value="any">any</option></select> of these hold:
-        </div>
-        <div class="sec-h">Conditions on the entity</div>
-        <div id="conds"></div>
-        <button class="btn btn-xs btn-outline-secondary" id="add-cond"><i class="bi bi-plus"></i> Condition</button>
-        <div class="sec-h">Relationships to other indicators</div>
-        <div id="rels"></div>
-        <button class="btn btn-xs btn-outline-secondary" id="add-rel"><i class="bi bi-diagram-2"></i> Relationship</button>
-        <div class="sec-h">Score thresholds</div>
-        <div class="d-flex flex-wrap gap-3 small">
-          <label>Fidelity ≥ <input class="form-control form-control-sm d-inline-block" style="width:5rem" type="number" min="0" max="100" id="r-minf" placeholder="any"></label>
-          <label>Confidence ≥ <input class="form-control form-control-sm d-inline-block" style="width:5rem" type="number" min="0" max="100" id="r-minc" placeholder="any"></label>
-        </div>
-        <div class="sec-h">Action when run on a case</div>
-        <div class="d-flex flex-wrap gap-2 align-items-center small">
-          <select class="form-select form-select-sm" id="a-type" style="width:auto"><option value="none">Report matches only</option><option value="pivot">Pivot on matches</option><option value="query">Hunt query per match</option></select>
-          <span id="a-max-w">on at most <input class="form-control form-control-sm d-inline-block" style="width:4.5rem" type="number" min="1" max="25" id="a-max" value="5"> matches (highest fidelity first)</span>
-        </div>
-        <div id="a-src" class="mt-2 small"></div>
-        <div id="a-query" class="mt-2">
-          <div class="d-flex flex-wrap gap-2 align-items-center small mb-2">
-            <label for="a-plat">Platform</label>
-            <select class="form-select form-select-sm" id="a-plat" style="width:auto"></select>
-            <span id="a-plat-mode"></span>
-          </div>
-          <input class="form-control form-control-sm mono" id="a-q" aria-describedby="a-plat-help">
-          <div class="small-muted mt-1" id="a-plat-help"></div>
-          <div class="chip-list mt-2" id="a-ex"></div>
-          <div class="small-muted mt-2">Placeholders: <code>{value}</code> <code>{host}</code> <code>{apex}</code> <code>{prop:name}</code> (any property of the entity). Values are quote-escaped; matches without the value are skipped.</div></div>
-        <label class="small mt-3 d-block"><input type="checkbox" class="form-check-input" id="r-enabled" checked> Enabled</label>
         <div class="field-err" id="ed-err" role="alert"></div>
       </div>
       <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0">
-        <select class="form-select form-select-sm" id="scope" style="width:auto;max-width:260px" aria-label="Test scope"><option value="all">Test on all cases</option></select>
-        <button class="btn btn-sm btn-outline-primary" id="test" data-busy="Testing…"><i class="bi bi-play me-1"></i>Test</button>
-        <div class="ms-auto d-flex gap-2"><button class="btn btn-sm btn-outline-secondary" id="save-new" style="display:none">Save as new</button>
-          <button class="btn btn-sm btn-primary" id="save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save rule</button></div>
+        <div class="ms-auto"><button class="btn btn-sm btn-primary" id="save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save rule</button></div>
       </div>
     </div>
-    <div id="results"></div>
   </div>
   <div>
     <div class="panel">
       <div class="panel-head"><h2 class="panel-title"><i class="bi bi-collection"></i>Saved rules</h2><span class="panel-meta ms-auto" id="n-rules"></span></div>
-      <div class="panel-body pb-2"><input class="form-control form-control-sm" id="rq" placeholder="Filter by name, tag, category…" aria-label="Filter rules"></div>
       <div class="panel-body flush" id="rule-list">{% for i in range(3) %}<div class="p-3"><span class="skel mb-2" style="width:60%"></span><span class="skel" style="width:85%"></span></div>{% endfor %}</div>
     </div>
   </div>
@@ -78,224 +37,60 @@
 <script>
 (function () {
   const {esc} = IO;
-  let S, RULES = [], CASES = [], editing = null;
+  let S, RULES = [], editing = null;
   const $ = id => document.getElementById(id);
-  const FIELD = id => S.fields.find(f => f.id === id) || {id, label: id, kind: 'str'};
+  const opts = (list, sel) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
-  function opts(list, sel, lab) { return list.map(o => { const v = typeof o === 'string' ? o : o[0], l = typeof o === 'string' ? (lab ? lab(o) : o) : o[1]; return `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(l)}</option>`; }).join(''); }
-
-  function condRow(c) {
-    c = c || {field: 'value', op: 'contains', value: ''};
-    const f = FIELD(c.field), ops = S.ops[f.kind] || S.ops.str;
-    const op = ops.includes(c.op) ? c.op : ops[0];
-    let input;
-    if (op === 'exists' || op === 'not_exists') input = '<span class="small-muted align-self-center">—</span>';
-    else if (f.kind === 'bool') input = `<select class="form-select" data-v><option value="true" ${c.value !== false ? 'selected' : ''}>yes</option><option value="false" ${c.value === false ? 'selected' : ''}>no</option></select>`;
-    else input = `<input class="form-control ${f.kind === 'num' && op !== 'in' && op !== 'not_in' ? '' : 'mono'}" data-v ${f.kind === 'num' && op !== 'in' && op !== 'not_in' ? 'type="number" step="any"' : ''}
-      value="${esc(Array.isArray(c.value) ? c.value.join(', ') : c.value == null ? '' : c.value)}" placeholder="${op === 'in' || op === 'not_in' ? 'comma separated' : op === 'regex' ? 'regular expression' : 'value'}">`;
-    return `<div class="cond-row" data-cond><select class="form-select" data-f aria-label="Field">${S.fields.map(x => `<option value="${x.id}" ${x.id === c.field ? 'selected' : ''}>${esc(x.label)}</option>`).join('')}</select>
-      <select class="form-select" data-op aria-label="Operator">${ops.map(o => `<option value="${o}" ${o === op ? 'selected' : ''}>${esc(S.op_labels[o])}</option>`).join('')}</select>
-      ${input}<button class="btn btn-xs btn-outline-danger" data-del title="Remove condition" aria-label="Remove condition"><i class="bi bi-x"></i></button></div>`;
-  }
-  function relBox(r) {
-    r = r || {rel: 'any', direction: 'any', target_type: 'any', min: 1, match: 'all', conditions: []};
-    return `<div class="rel-box" data-rel><div class="rel-head">
-      <select class="form-select" data-rr aria-label="Relation">${opts([['any', 'any relation'], ...S.rels.map(x => [x, x])], r.rel)}</select>
-      <select class="form-select" data-rd aria-label="Direction">${opts([['any', 'either direction'], ['out', 'entity → neighbour'], ['in', 'neighbour → entity']], r.direction)}</select>
-      <select class="form-select" data-rt aria-label="Neighbour type">${opts([['any', 'any type'], ...S.types.map(x => [x, x])], r.target_type)}</select>
-      <label class="small d-flex align-items-center gap-1">at least <input class="form-control" type="number" min="1" max="1000" value="${r.min || 1}" data-rm style="width:4rem"></label>
-      <button class="btn btn-xs btn-outline-danger" data-del-rel title="Remove relationship" aria-label="Remove relationship"><i class="bi bi-x"></i></button></div>
-      <div class="small-muted mb-1">…whose neighbour satisfies <select class="form-select form-select-sm d-inline-block" data-rmatch style="width:auto">${opts([['all', 'all'], ['any', 'any']], r.match)}</select> of:</div>
-      <div data-rconds>${(r.conditions || []).map(condRow).join('')}</div>
-      <button class="btn btn-xs btn-outline-secondary" data-add-rc><i class="bi bi-plus"></i> Neighbour condition</button></div>`;
-  }
-
-  function bindRows(root) {
-    root.querySelectorAll('[data-cond]').forEach(row => {
-      const redraw = () => { const c = readCond(row); c.op = row.querySelector('[data-op]').value; const tmp = document.createElement('div'); tmp.innerHTML = condRow(c); const n = tmp.firstElementChild; row.replaceWith(n); bindRows(n.parentElement); };
-      row.querySelector('[data-f]').onchange = () => { const tmp = document.createElement('div'); tmp.innerHTML = condRow({field: row.querySelector('[data-f]').value, value: ''}); const n = tmp.firstElementChild; row.replaceWith(n); bindRows(n.parentElement); };
-      row.querySelector('[data-op]').onchange = redraw;
-      row.querySelector('[data-del]').onclick = () => row.remove();
-    });
-    root.querySelectorAll('[data-rel]').forEach(box => {
-      box.querySelector('[data-del-rel]').onclick = () => box.remove();
-      box.querySelector('[data-add-rc]').onclick = () => { box.querySelector('[data-rconds]').insertAdjacentHTML('beforeend', condRow()); bindRows(box); };
-    });
-  }
-  function readCond(row) {
-    const f = FIELD(row.querySelector('[data-f]').value), v = row.querySelector('[data-v]');
-    let value = v ? v.value : null;
-    if (f.kind === 'bool') value = value === 'true';
-    return {field: f.id, op: row.querySelector('[data-op]').value, value};
-  }
-
-  function readRule() {
-    return {name: $('r-name').value, category: $('r-cat').value, tags: $('r-tags').value, description: $('r-desc').value,
-      target: $('r-target').value, match: $('r-match').value, enabled: $('r-enabled').checked,
-      conditions: [...$('conds').querySelectorAll(':scope > [data-cond]')].map(readCond),
-      relations: [...$('rels').querySelectorAll('[data-rel]')].map(b => ({rel: b.querySelector('[data-rr]').value, direction: b.querySelector('[data-rd]').value,
-        target_type: b.querySelector('[data-rt]').value, min: b.querySelector('[data-rm]').value, match: b.querySelector('[data-rmatch]').value,
-        conditions: [...b.querySelectorAll('[data-cond]')].map(readCond)})),
-      min_fidelity: $('r-minf').value, min_confidence: $('r-minc').value,
-      action: {type: $('a-type').value, max: $('a-max').value, query: $('a-q').value, platform: $('a-plat').value,
-        sources: [...document.querySelectorAll('[data-asrc]:checked')].map(x => x.value)}};
-  }
-
-  function fill(r, id) {
-    editing = id || null;
+  function fill(r) {
     r = r || {};
-    $('ed-title').textContent = id ? 'Edit rule' : r.name ? 'New rule from template' : 'New rule';
-    $('ed-meta').textContent = id && r.updated ? 'updated ' + IO.ago(r.updated) : '';
-    $('save-new').style.display = id ? '' : 'none';
-    $('r-name').value = r.name || ''; $('r-cat').innerHTML = opts(S.categories, r.category || 'other');
-    $('r-tags').value = (r.tags || []).join(', '); $('r-desc').value = r.description || '';
-    $('r-target').innerHTML = opts([['any', 'any type'], ...S.types.map(t => [t, t])], r.target || 'any');
-    $('r-match').value = r.match || 'all'; $('r-enabled').checked = r.enabled !== false;
-    $('conds').innerHTML = (r.conditions || []).map(condRow).join('');
-    $('rels').innerHTML = (r.relations || []).map(relBox).join('');
-    $('r-minf').value = r.min_fidelity ?? ''; $('r-minc').value = r.min_confidence ?? '';
-    const a = r.action || {type: 'none'};
-    $('a-type').value = a.type; $('a-max').value = a.max || 5; $('a-q').value = a.query || '';
-    $('a-plat').innerHTML = Object.entries(S.platforms).map(([k, p]) => `<option value="${k}">${esc(p.name)}</option>`).join('');
-    $('a-plat').value = a.platform || 'urlscan'; platformHelp();
-    $('a-src').innerHTML = S.sources.map(s => `<label class="me-3"><input type="checkbox" class="form-check-input" data-asrc value="${s}" ${(a.sources || ['vt', 'urlscan', 'pdns']).includes(s) ? 'checked' : ''}> ${esc({vt: 'VirusTotal', urlscan: 'urlscan', pdns: 'Passive DNS', ct: 'Cert Transparency'}[s])}</label>`).join('');
-    actionVis(); bindRows($('editor')); $('ed-err').textContent = ''; $('results').innerHTML = '';
+    editing = r.id || null;
+    $('ed-title').textContent = editing ? 'Edit rule' : 'New rule';
+    $('r-name').value = r.name || '';
+    $('r-plat').innerHTML = opts(Object.entries(S.platforms), r.platform || 'urlscan');
+    $('r-query').value = r.query || '';
+    const ratings = S.ratings.map(x => [x, x]);
+    $('r-fid').innerHTML = opts(ratings, r.fidelity || 'medium');
+    $('r-conf').innerHTML = opts(ratings, r.confidence || 'medium');
+    $('ed-err').textContent = '';
     renderList();
   }
-  function platformHelp() {
-    const p = S.platforms[$('a-plat').value];
-    $('a-plat-help').textContent = p.help;
-    $('a-plat-mode').innerHTML = '<span class="kstate valid" title="Hits join the case and are scored">runs here</span>';
-    $('a-q').placeholder = p.examples[0][0];
-    $('a-ex').innerHTML = p.examples.map(([q, l]) => `<button type="button" class="ind" data-ex="${esc(q)}" title="${esc(l)}"><span class="ind-t">${esc(l)}</span><span class="ind-v">${esc(q)}</span></button>`).join('');
-    document.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => { $('a-q').value = b.dataset.ex; $('a-q').focus(); });
-  }
-  function actionVis() { const t = $('a-type').value; $('a-src').style.display = t === 'pivot' ? '' : 'none'; $('a-query').style.display = t === 'query' ? '' : 'none'; $('a-max-w').style.display = t === 'none' ? 'none' : ''; }
 
   function renderList() {
-    const q = $('rq').value.toLowerCase();
-    const rows = RULES.filter(r => !q || [r.name, r.category, ...(r.tags || []), r.description].join(' ').toLowerCase().includes(q));
-    $('n-rules').textContent = `${RULES.filter(r => r.enabled).length} enabled · ${RULES.length} total`;
-    $('rule-list').innerHTML = rows.map(r => `<div class="p-3 ${r.enabled ? '' : 'rule-off'}" style="border-top:1px solid var(--border);${r.id === editing ? 'background:var(--accent-glow)' : ''}">
-      <div class="d-flex align-items-start gap-2"><div style="min-width:0;flex:1"><a href="#" data-open="${r.id}" class="fw-semibold">${esc(r.name)}</a>
-        <div class="small-muted">${esc(r.target === 'any' ? 'any type' : r.target)} · ${r.conditions.length} condition${r.conditions.length === 1 ? '' : 's'} · ${r.relations.length} relation${r.relations.length === 1 ? '' : 's'} · action: ${esc(r.action.type)}</div>
-        <div class="chip-list mt-1"><span class="bpb">${esc(r.category)}</span>${(r.tags || []).map(t => `<span class="bpb src">#${esc(t)}</span>`).join('')}</div>
-        ${r.last_run ? `<div class="small-muted mt-1">last run ${IO.ago(r.last_run.at)} on ${esc(IO.trunc(r.last_run.case, 30))}: ${r.last_run.matches} matches, ${r.last_run.actions} actions</div>` : ''}</div>
-        <div class="form-check form-switch m-0" title="${r.enabled ? 'Disable' : 'Enable'}"><input class="form-check-input" type="checkbox" data-tog="${r.id}" ${r.enabled ? 'checked' : ''} aria-label="Enabled"></div></div>
-      <div class="d-flex gap-1 mt-2 flex-wrap"><button class="btn btn-xs btn-outline-secondary" data-open="${r.id}">Edit</button>
-        <button class="btn btn-xs btn-outline-primary" data-run="${r.id}">Run on case…</button>
-        <button class="btn btn-xs btn-outline-secondary" data-dup="${r.id}">Duplicate</button>
+    $('n-rules').textContent = `${RULES.length} rule${RULES.length === 1 ? '' : 's'}`;
+    $('rule-list').innerHTML = RULES.map(r => `<div class="p-3" style="border-top:1px solid var(--border);${r.id === editing ? 'background:var(--accent-glow)' : ''}">
+      <a href="#" data-open="${r.id}" class="fw-semibold">${esc(r.name)}</a>
+      <div class="small-muted">${esc(S.platforms[r.platform] || r.platform || '?')} · fidelity ${esc(r.fidelity || '?')} · confidence ${esc(r.confidence || '?')}</div>
+      <code class="small wrap-any d-block mt-1">${esc(r.query || '')}</code>
+      <div class="d-flex gap-1 mt-2"><button class="btn btn-xs btn-outline-secondary" data-open="${r.id}">Edit</button>
+        <button class="btn btn-xs btn-outline-secondary" data-cq="${esc(r.query || '')}" title="Copy query"><i class="bi bi-clipboard"></i></button>
+        ${r.url ? `<a class="btn btn-xs btn-outline-secondary" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="Open on the platform"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
         <button class="btn btn-xs btn-outline-danger ms-auto" data-rmr="${r.id}" aria-label="Delete rule"><i class="bi bi-trash"></i></button></div></div>`).join('')
-      || `<div class="empty-state"><i class="bi bi-funnel"></i>${RULES.length ? 'No rule matches the filter.' : 'No saved rules yet. Build one on the left or start from a template.'}</div>`;
-    document.querySelectorAll('[data-open]').forEach(a => a.onclick = e => { e.preventDefault(); const r = RULES.find(x => x.id === a.dataset.open); fill(r, r.id); $('editor').scrollIntoView({behavior: 'smooth'}); });
-    document.querySelectorAll('[data-tog]').forEach(c => c.onchange = async () => { try { await IO.post(`/api/rules/${c.dataset.tog}/toggle`, {enabled: c.checked}); await reload(); } catch (e) { IO.err(e); } });
-    document.querySelectorAll('[data-dup]').forEach(b => b.onclick = async () => { try { const r = await IO.post(`/api/rules/${b.dataset.dup}/duplicate`); await reload(); fill(r, r.id); IO.toast('Duplicated (disabled until you enable it)', 'ok'); } catch (e) { IO.err(e); } });
+      || '<div class="empty-state"><i class="bi bi-funnel"></i>No saved rules yet.</div>';
+    document.querySelectorAll('[data-open]').forEach(a => a.onclick = e => { e.preventDefault(); fill(RULES.find(x => x.id === a.dataset.open)); });
+    document.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => IO.copy(b.dataset.cq));
     document.querySelectorAll('[data-rmr]').forEach(b => b.onclick = async () => { const r = RULES.find(x => x.id === b.dataset.rmr);
       if (!await IO.confirm('Delete rule', `Delete “${r.name}”? This cannot be undone.`)) return;
-      try { await IO.post(`/api/rules/${r.id}/delete`); if (editing === r.id) fill(null); await reload(); IO.toast('Rule deleted', 'ok'); } catch (e) { IO.err(e); } });
-    document.querySelectorAll('[data-run]').forEach(b => b.onclick = () => runDialog(RULES.find(x => x.id === b.dataset.run)));
+      try { await IO.post(`/api/rules/${r.id}/delete`); if (editing === r.id) editing = null; await reload(); if (!editing) fill(null); IO.toast('Rule deleted', 'ok'); } catch (e) { IO.err(e); } });
   }
 
-  function matchList(ms, caseName) {
-    return ms.map(m => `<div class="factor support"><i class="bi bi-${IO.typeIcon(m.type)} ic"></i><div>
-      <a class="mono small wrap-any" href="/cases/${encodeURIComponent(caseName)}#pivots">${esc(m.type)} ${esc(IO.trunc(m.value, 90))}</a> ${IO.pri(m.priority)} ${m.expanded ? '<span class="flag">pivoted</span>' : ''}
-      <ul class="match-reasons">${m.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul>
-      ${m.query ? `<div class="d-flex gap-1 align-items-center mt-1"><code class="small wrap-any">${esc(m.query)}</code>
-        <button class="btn btn-xs btn-outline-secondary" data-cq="${esc(m.query)}" title="Copy query"><i class="bi bi-clipboard"></i></button>
-        <a class="btn btn-xs btn-outline-secondary" href="${esc(m.query_url)}" target="_blank" rel="noopener noreferrer" title="Open on the platform"><i class="bi bi-box-arrow-up-right"></i></a></div>`
-        : m.query === null ? '<div class="small-muted mt-1">query skipped: a placeholder has no value on this entity</div>' : ''}</div>
-      <div class="text-end">${IO.score(m.fidelity, 'Fidelity')}<span class="score-lbl">fidelity</span>${IO.score(m.confidence, 'Confidence')}<span class="score-lbl">confidence</span></div></div>`).join('');
-  }
-
-  const bindCopy = root => root.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => IO.copy(b.dataset.cq));
-  const actionText = a => a.type === 'none' ? 'report matches only' : a.type === 'pivot' ? 'pivot with ' + a.sources.join(', ')
-    : `${(S.platforms[a.platform || 'urlscan'] || {name: a.platform + ' (no longer available)'}).name} query ${a.query}`;
-
-  async function test() {
+  async function save() {
     $('ed-err').textContent = '';
-    $('results').innerHTML = `<div class="panel"><div class="panel-body">${IO.loadingBox('Evaluating the rule…')}</div></div>`;
+    const body = {name: $('r-name').value, platform: $('r-plat').value, query: $('r-query').value,
+      fidelity: $('r-fid').value, confidence: $('r-conf').value};
     try {
-      const r = await IO.post('/api/rules/test', {rule: readRule(), scope: $('scope').value});
-      $('results').innerHTML = `<div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-check2-square"></i>Test results</h2>
-        <span class="panel-meta">${r.total} match${r.total === 1 ? '' : 'es'} in ${r.cases.length} case${r.cases.length === 1 ? '' : 's'} · ${IO.num(r.evaluated)} entities evaluated in ${r.scanned} case${r.scanned === 1 ? '' : 's'} · dry run, nothing was pivoted</span></div>
-        <div class="panel-body">${r.cases.length ? r.cases.map(c => `<details ${r.cases.length <= 3 ? 'open' : ''} class="mb-2"><summary><b>${esc(IO.trunc(c.seed, 60))}</b> <span class="small-muted">${esc(c.case)} · ${c.count} match${c.count === 1 ? '' : 'es'}</span></summary>
-          ${matchList(c.matches.slice(0, 50), c.case)}${c.count > 50 ? `<div class="small-muted">+${c.count - 50} more</div>` : ''}</details>`).join('')
-          : '<div class="empty-state"><i class="bi bi-search"></i>No entity matches. Loosen a condition, switch “all” to “any”, or test on all cases.</div>'}</div></div>`;
-      bindCopy($('results'));
-    } catch (e) { $('results').innerHTML = ''; $('ed-err').textContent = e.message; }
-  }
-
-  async function save(asNew) {
-    $('ed-err').textContent = '';
-    try {
-      const body = readRule();
-      const r = editing && !asNew ? await IO.post(`/api/rules/${editing}`, body) : await IO.post('/api/rules', body);
-      await reload(); fill(r, r.id); IO.toast('Rule saved', 'ok');
+      const r = editing ? await IO.post(`/api/rules/${editing}`, body) : await IO.post('/api/rules', body);
+      await reload(); fill(RULES.find(x => x.id === r.id)); IO.toast('Rule saved', 'ok');
     } catch (e) { $('ed-err').textContent = e.message; }
-  }
-
-  function runDialog(rule) {
-    const m = IO.modal(`Run “${rule.name}”`, `<label class="form-label small-muted" for="run-case">Case</label>
-      <select class="form-select form-select-sm mb-2" id="run-case">${CASES.map(c => `<option value="${esc(c.name)}">${esc(IO.trunc(c.seed, 60))} · ${esc(c.name.slice(0, 15))}</option>`).join('')}</select>
-      <div class="small-muted mb-2">Action: <b>${esc(actionText(rule.action))}</b>${rule.action.type !== 'none' ? ` on up to ${rule.action.max} matches` : ''}.
-      Actions queue behind the case's background update when it was just opened.</div><div class="field-err" data-err></div><div data-out></div>`,
-      {size: 'modal-lg', footer: '<button class="btn btn-sm btn-outline-secondary" data-dry data-busy="Matching…">Preview matches</button>' + (rule.action.type !== 'none' ? `<button class="btn btn-sm btn-primary" data-exec data-busy="Running…" ${rule.enabled ? '' : 'disabled title="Enable the rule first"'}>Run action</button>` : '')});
-    const go = execute => async () => {
-      m.el.querySelector('[data-err]').textContent = '';
-      const cs = m.el.querySelector('#run-case').value;
-      try {
-        const r = await IO.post(`/api/rules/${rule.id}/run`, {case: cs, execute});
-        const out = m.el.querySelector('[data-out]');
-        out.innerHTML = `<div class="note-box">${r.count} match${r.count === 1 ? '' : 'es'} of ${r.evaluated} entities.${execute ? ` ${r.launched.length} action${r.launched.length === 1 ? '' : 's'} started.` : ''}</div>`
-          + (r.launched.length ? `<div class="sec-h">Actions</div>` + r.launched.map(l => `<div class="small" data-job="${l.job}"><span class="bpb sc-pending">queued</span> ${esc(l.kind)} · <span class="mono">${esc(IO.trunc(l.query || l.value, 80))}</span></div>`).join('') : '')
-          + (r.skipped.length ? `<div class="sec-h">Skipped</div>` + r.skipped.map(s => `<div class="small-muted">${esc(IO.trunc(s.value, 60))}: ${esc(s.why)}</div>`).join('') : '')
-          + `<div class="sec-h">Matches</div>${matchList(r.matches.slice(0, 40), r.case)}`;
-        bindCopy(out);
-        reload();
-        if (r.launched.length) poll(cs, r.launched, out);
-      } catch (e) { m.el.querySelector('[data-err]').textContent = e.message; }
-    };
-    m.el.querySelector('[data-dry]').onclick = e => IO.busy(e.currentTarget, go(false));
-    const ex = m.el.querySelector('[data-exec]'); if (ex) ex.onclick = e => IO.busy(e.currentTarget, go(true));
-  }
-  async function poll(cs, launched, out) {
-    const pending = new Set(launched.map(l => l.job));
-    while (pending.size && document.body.contains(out)) {
-      await new Promise(r => setTimeout(r, 2000));
-      for (const j of [...pending]) {
-        try {
-          const s = await IO.get(`/cases/${encodeURIComponent(cs)}/graph/api/job/${j}`);
-          const el = out.querySelector(`[data-job="${j}"] .bpb`);
-          if (el) { el.className = 'bpb ' + (s.state === 'done' ? 'sc-completed' : s.state === 'error' ? 'sc-failed' : 'sc-pending'); el.textContent = s.state + (s.result ? ` · ${s.result.new_nodes} new` : ''); }
-          if (s.state === 'done' || s.state === 'error') pending.delete(j);
-        } catch (e) { pending.delete(j); }
-      }
-    }
-    if (!pending.size && document.body.contains(out)) IO.toast('Rule actions finished — the case was updated and re-scored', 'ok');
   }
 
   async function reload() {
     const r = await IO.get('/api/rules');
-    S = r.schema; RULES = r.items; CASES = r.cases;
-    $('scope').innerHTML = '<option value="all">Test on all cases</option>' + CASES.map(c => `<option value="${esc(c.name)}">${esc(IO.trunc(c.seed, 40))}</option>`).join('');
-    $('tpl').innerHTML = S.templates.map((t, i) => `<li><a class="dropdown-item small" href="#" data-tpl="${i}"><b>${esc(t.name)}</b><div class="small-muted" style="white-space:normal;max-width:320px">${esc(t.description)}</div></a></li>`).join('');
-    document.querySelectorAll('[data-tpl]').forEach(a => a.onclick = e => { e.preventDefault(); fill(JSON.parse(JSON.stringify(S.templates[+a.dataset.tpl]))); });
+    S = r.schema; RULES = r.items;
     renderList();
   }
 
-  $('add-cond').onclick = () => { $('conds').insertAdjacentHTML('beforeend', condRow()); bindRows($('conds')); };
-  $('add-rel').onclick = () => { $('rels').insertAdjacentHTML('beforeend', relBox()); bindRows($('rels')); };
-  $('a-type').onchange = actionVis;
-  $('a-plat').onchange = () => {
-    const ex = Object.values(S.platforms).flatMap(p => p.examples.map(e => e[0]));
-    if (!$('a-q').value.trim() || ex.includes($('a-q').value.trim())) $('a-q').value = '';   // don't keep another tool's syntax
-    platformHelp();
-  };
   $('new').onclick = () => fill(null);
-  $('test').onclick = e => IO.busy(e.currentTarget, test);
-  $('save').onclick = e => IO.busy(e.currentTarget, () => save(false));
-  $('save-new').onclick = () => save(true);
-  $('rq').oninput = renderList;
+  $('save').onclick = e => IO.busy(e.currentTarget, save);
   reload().then(() => fill(null)).catch(e => { $('rule-list').innerHTML = IO.errorBox(e); });
 })();
 </script>

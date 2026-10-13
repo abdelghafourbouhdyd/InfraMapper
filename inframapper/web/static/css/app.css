@@ -250,16 +250,6 @@ textarea.mono, input.mono { font-family: var(--mono); font-size: .78rem; }
 .quota .q.low .bar > i { background: var(--warning); }
 .quota .q.out .bar > i { background: var(--danger); }
 
-/* rule builder */
-.cond-row { display: grid; grid-template-columns: minmax(130px, 1.3fr) minmax(110px, 1fr) minmax(120px, 1.6fr) auto; gap: .4rem; margin-bottom: .4rem; }
-.cond-row .form-select, .cond-row .form-control { font-size: .76rem; padding: .25rem .45rem; }
-@media (max-width: 560px) { .cond-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.rel-box { border: 1px solid var(--border2); border-radius: 6px; padding: .6rem; margin-bottom: .6rem; background: var(--surface2); }
-.rel-head { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: .4rem; margin-bottom: .5rem; }
-@media (max-width: 560px) { .rel-head { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
-.rel-head .form-select, .rel-head .form-control { font-size: .74rem; padding: .25rem .45rem; }
-.match-reasons { margin: .2rem 0 0; padding-left: 1rem; font-size: .7rem; color: var(--muted2); }
-.rule-off { opacity: .55; }
 .tbl-sort th[data-sort] { cursor: pointer; user-select: none; white-space: nowrap; }
 .tbl-sort th[data-sort]::after { content: " \2195"; color: var(--muted); font-size: .65rem; }
 .tbl-sort th.asc::after { content: " \2191"; color: var(--text); }

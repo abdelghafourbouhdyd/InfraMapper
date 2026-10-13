@@ -458,144 +458,26 @@ Mnemonic's free quota is small; a `MNEMONIC_API_KEY` or CIRCL account makes this
 
 ## 11. Hunting rules: your own hunting logic
 
-Web UI → **Hunting rules**. A rule describes what to look for in your case graphs; you test it, then run
-an action on what it finds. No code needed. Rules are stored in `cases/hunt_rules.json` and apply to every
-case.
+Web UI → **Hunting rules**. A rule is a saved piece of pivoting logic: a query you run on a platform to
+find more of an actor's infrastructure. Rules are stored in `cases/hunt_rules.json`.
 
-Rules run **only when you click Test or Run**. They never run on their own during an investigation.
-
-### Parts of a rule
-
-| Part | Options |
+| Field | What it holds |
 |---|---|
-| Name, description, category, tags | your labels. Categories: infrastructure, phishing, malware, c2, certificate, dns, reputation, other |
-| Target | the entity type to look at: Domain, IP, URL, File, Certificate, JARM, Favicon, Title, HtmlHash, Script, NameServer, MailServer, SoaEmail, ASN, Report, or **any** |
-| Conditions | up to 20 checks on the entity itself (fields below) |
-| Relations | up to 5 checks on its neighbours in the graph (below) |
-| Match | **all**: every condition and relation must hold. **any**: one is enough |
-| Minimum confidence / fidelity | optional 0–100 gates ([section 14](#14-fidelity-and-confidence-scores)) |
-| Action | what **Run** does with the matches (below) |
-| Enabled | a disabled rule can still be tested, but its action won't run |
+| Rule name | what the pivot is, e.g. *Phishing kit page title* |
+| Platform | where the query runs: **urlscan.io** or **VirusTotal Intelligence** |
+| Query | the query or identifier on that platform: a page title, favicon hash, JARM, imphash… |
+| Fidelity | low / medium / high: how precisely the query singles out the target's infrastructure |
+| Confidence | low / medium / high: how sure you are of what it returns |
 
-### Condition fields
+Each saved rule can be edited, deleted, its query copied, or opened on its platform in one click.
 
-| Field | Type | Example use |
-|---|---|---|
-| `value` | text | the indicator itself: `value` regex `^login-[a-z]+\.` |
-| `tld` | text | `tld` is one of `top, xyz, shop` |
-| `apex` | text | registered domain of a domain / URL |
-| `vt_malicious` | number | VT engines flagging it: `vt_malicious` ≥ 3 |
-| `asn`, `as_owner`, `country` | text | `as_owner` contains `hetzner` |
-| `registrar` | text | `registrar` contains `namecheap` |
-| `age_days` | number | domain age: `age_days` ≤ 30 |
-| `issuer`, `subject_cn` | text | certificate: `issuer` contains `Let's Encrypt` |
-| `san` | list | names on a certificate |
-| `title` | text | page title from urlscan |
-| `file_type`, `name`, `label` | text | file type, file name, VT threat label |
-| `families`, `actors`, `tags` | list | `families` contains `Vidar` |
-| `open_ports`, `cpes` | list | `open_ports` contains `50050` |
-| `priority` | text | `priority` is one of `P1, P2` |
-| `verdict` | text | analyst verdict: `fp` or `confirmed` |
-| `cluster`, `shared_hosting`, `expanded` | yes / no | in the confirmed cluster; shared hosting IP; already pivoted |
-| `confidence`, `fidelity` | number | scores 0–100 |
-| `degree` | number | number of links in the graph |
-| `prop:<name>` | text | any other stored property, e.g. `prop:registrar_url` |
+Examples:
 
-**Operators**
-
-| Field type | Operators |
-|---|---|
-| text | `=`, `≠`, contains, does not contain, starts with, ends with, matches regex, is one of, is not one of, is set, is not set |
-| number | `=`, `≠`, `>`, `≥`, `<`, `≤`, is one of, is not one of, is set, is not set |
-| list | contains, does not contain, `=`, is one of, matches regex, is set, is not set |
-| yes / no | `=` |
-
-### Relations: conditions on neighbours
-
-A relation says: *"this entity has at least **N** neighbours, linked by relation **R** in direction
-**D**, of type **T**, that meet these conditions"*.
-
-| Setting | Options |
-|---|---|
-| Relation | `RESOLVES_TO`, `USES_CERT`, `HAS_JARM`, `CONTACTS`, `DROPS`, `DOWNLOADED_FROM`, `EMBEDS`, `HAS_URL`, `HAS_SUBDOMAIN`, `HOSTED_ON`, `REDIRECTS_TO`, `SERVES`, `SERVED_FROM`, `IN_ASN`, `USES_NS`, `USES_MX`, `SOA_CONTACT`, `HAS_TITLE`, `HAS_FAVICON`, `SERVES_HTML`, `SERVES_SCRIPT`, `REPORTED_IN`, `CO_MENTIONED`, `SEEN_ON`, `MATCHES_PATTERN`, `CNAME_TO`, `LOADS_FROM`, or any |
-| Direction | **out** (this entity → neighbour, e.g. domain `RESOLVES_TO` IP), **in** (neighbour → this entity, e.g. IP `USES_CERT` certificate, seen from the certificate), or either |
-| Neighbour type | any entity type, or any |
-| Minimum | how many matching neighbours are needed (default 1) |
-| Conditions | up to 10, same fields and operators as above, with their own all / any |
-
-### Actions
-
-| Action | What Run does |
-|---|---|
-| **none** | lists the matches only |
-| **pivot** | pivots on the matches with the sources you pick (VT, urlscan, passive DNS, CT). Skips entities already pivoted and types that can't be pivoted (only File, Domain, IP, URL, Certificate can) |
-| **query** | runs a search built from a template on **urlscan** or **VirusTotal Intelligence** (premium key) for each match. Hits join the case and are scored like any pivot |
-
-**Max actions** (default 5, at most 25): how many matches the action runs on. The best matches go first
-(highest fidelity, then confidence).
-
-**Query placeholders**, filled from each match:
-
-| Placeholder | Becomes |
-|---|---|
-| `{value}` | the entity's value |
-| `{host}` | its hostname (for URLs and domains) |
-| `{apex}` | its registered domain |
-| `{prop:name}` | any stored property, e.g. `{prop:urlscan_title}`, `{prop:imphash}`, `{prop:subject_cn}` |
-
-A match where a placeholder has no value is skipped. Examples:
-
-| Platform | Template | Finds |
-|---|---|---|
-| urlscan | `page.title:"{prop:urlscan_title}"` | sites with the same page title |
-| urlscan | `hash:{value}` | same favicon / HTML / script (on those nodes) |
-| urlscan | `page.domain:*{apex}* AND NOT page.domain:{apex}` | look-alikes of the domain |
-| urlscan | `page.ip:"{value}"` | pages served by this IP |
-| VT | `entity:domain jarm:{value}` | domains with this JARM (on JARM nodes) |
-| VT | `entity:file imphash:{prop:imphash}` | files with the same imphash |
-| VT | `entity:ip ssl_subject:{prop:subject_cn}` | IPs serving a certificate with this CN |
-
-### Test and Run
-
-| Button | Scope | What it does |
-|---|---|---|
-| **Test** | all cases or one case; works on an unsaved rule | lists what matches and **why**: every clause that held, with the value it saw. No pivots, no API quota |
-| **Run** | one case | evaluates the rule on the live case, then runs its action on the best matches. New results are saved to the case, scored and triaged |
-
-### Built-in templates
-
-Copy one and adjust it:
-
-| Template | Target | Logic | Action |
-|---|---|---|---|
-| Certificate served by a flagged IP | Certificate | used by an IP with `vt_malicious` ≥ 1 | pivot with CT + VT |
-| Young domain on a confirmed IP | Domain | `age_days` ≤ 60 **and** resolves to a cluster IP that isn't shared hosting or Cloudflare | pivot with VT + urlscan + pDNS |
-| Samples talking to P1/P2 infrastructure | File | contacts a host with `priority` P1 or P2 | none |
-| Phishing kit reuse by page title | Domain | in the cluster, has a title, fidelity ≥ 50 | urlscan `page.title:"{prop:urlscan_title}"` |
-| JARM fingerprint hunt on VT Intelligence | JARM | used by a cluster host | VT `entity:domain jarm:{value}` |
-| Unpivoted high-fidelity leads | any | not pivoted yet, fidelity ≥ 60, confidence ≥ 50 | pivot with all sources |
-
-### Example: Vidar C2 on fresh domains
-
-Goal: find young domains, tied to Vidar, that sit on a dedicated server, and pivot on them.
-
-| Setting | Value |
-|---|---|
-| Target | Domain |
-| Match | all |
-| Condition 1 | `age_days` ≤ 30 |
-| Condition 2 | `families` contains `Vidar` |
-| Relation | `RESOLVES_TO`, out, IP, minimum 1, with `shared_hosting` = no **and** `as_owner` does not contain `cloudflare` |
-| Action | pivot with VT + urlscan + pDNS, max 5 |
-
-**Test** across all cases shows each matching domain with its reasons, for example: `age_days 12 ≤ 30`,
-`families contains Vidar`, `RESOLVES_TO → IP: 1 matching neighbour(s): IP 198.51.100.23`. If the list
-looks right, open a case and **Run**.
-
-### Limits
-
-20 conditions and 5 relations per rule, 10 conditions per relation, 200 values in an "is one of" list,
-regexes up to 300 characters, query templates up to 400 characters, 25 actions per run.
+| Rule name | Platform | Query | Fidelity | Confidence |
+|---|---|---|---|---|
+| Kit page title | urlscan | `page.title:"Sign in to your account"` | medium | medium |
+| Favicon reuse | urlscan | `hash:<favicon sha256>` | high | medium |
+| C2 TLS fingerprint | VT | `entity:domain jarm:<jarm>` | low | low |
 
 ---
 
@@ -786,7 +668,7 @@ Same engine and same `cases/` folder as the CLI.
 | Cases | every case; per case: report, IOC table (filter, copy, CSV), pivot results, threat reports, live pivot graph, Suricata / IOC lists, exports |
 | Knowledge base | analyst verdicts; rebuild from cases |
 | Threat reports | search the dataset; start an ingestion |
-| Hunting rules | your own hunting logic: conditions, relations and actions over case graphs; **Test** and **Run** ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
+| Hunting rules | saved pivoting logic: platform, query, fidelity and confidence ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
 | API keys & settings | add, test, remove keys per provider; status valid / invalid / quota exhausted / keyless / untested |
 
 ![Dashboard](screenshots/dashboard.png)

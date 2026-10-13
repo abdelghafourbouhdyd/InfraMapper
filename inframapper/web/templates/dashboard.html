@@ -87,7 +87,7 @@
     const bad = d.key_health.filter(k => ['invalid', 'error', 'rate_limited'].includes(k.status));
     document.getElementById('sources').innerHTML = (bad.length ? `<div class="note-box danger mb-2">${bad.length} data source${bad.length > 1 ? 's need' : ' needs'} attention — <a href="/settings">fix keys</a></div>` : '')
       + d.key_health.map(k => `<div class="d-flex justify-content-between align-items-center small mb-1" title="${esc(k.message || '')}"><span>${esc(k.name)}</span><span class="kstate ${esc(k.status)}">${esc(KS[k.status] || k.status)}</span></div>`).join('')
-      + `<div class="small-muted mt-2">${d.rules} enabled hunting rule${d.rules === 1 ? '' : 's'} · <a href="/rules">manage →</a></div>`;
+      + `<div class="small-muted mt-2">${d.rules} hunting rule${d.rules === 1 ? '' : 's'} · <a href="/rules">manage →</a></div>`;
     document.getElementById('active-panel').style.display = d.active.length ? '' : 'none';
     document.getElementById('active').innerHTML = d.active.map(j => `<div class="mb-1"><a href="/jobs/${j.id}">${esc(j.label)}</a> ${IO.jobState(j.state)}</div>`).join('');
     document.getElementById('jobs').innerHTML = d.jobs.map(j => `<div class="mb-1 small">${IO.jobState(j.state)} <a href="/jobs/${j.id}">${esc(IO.trunc(j.label, 50))}</a> <span class="small-muted">${IO.ago(j.created)}</span>${j.case ? ` · <a href="/cases/${esc(j.case)}">case</a>` : ''}</div>`).join('') || '<span class="small-muted">No jobs yet.</span>';

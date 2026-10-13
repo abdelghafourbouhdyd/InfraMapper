@@ -1,5 +1,4 @@
-"""Scored pivot results of a case for the web UI (``/api/cases/<case>/pivots``) and the graphs
-hunting rules run on. Reads the live pivot session when one is open (freshest), else graph.json."""
+"""Scored pivot results of a case for the web UI (``/api/cases/<case>/pivots``). Reads the live pivot session when one is open (freshest), else graph.json."""
 
 from __future__ import annotations
 

@@ -210,7 +210,7 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         ks = keys.status()
         return jsonify(cases=len(cs), recent=cs[:12], priorities=pri, kb_cases=rt.kb.cases(), verdicts=verdicts,
                        n_verdicts=n_verdicts, reports=rt.kb.report_stats(), jobs=jobs.list(8), active=jobs.active(),
-                       sources=rt.sources(), rules=sum(1 for r in rules.list() if r.get("enabled")),
+                       sources=rt.sources(), rules=len(rules.list()),
                        key_health=[{"id": p["id"], "name": p["name"], "status": ks[p["id"]]["status"],
                                     "message": ks[p["id"]]["message"]} for p in PROVIDERS])
 
@@ -565,42 +565,11 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         return app.response_class(json.dumps(res, default=str), mimetype="application/json")
 
     # ── hunting rules ───────────────────────────────────────────────────────
-    def _rule_ctx(gr: dict) -> dict:
-        from ..scoring import Scorer
-        return rule_svc.context(gr["nodes"], gr["edges"], Scorer(gr["nodes"], gr["edges"], gr["seed"]).score())
-
-    def _evaluate(rule: dict, scope: str) -> dict:
-        if scope and scope != "all":
-            targets = [_case(scope)]
-        else:
-            targets = [out / c["name"] for c in case_svc.list_cases(out)]
-        per_case, total, evaluated = [], 0, 0
-        for d in targets:
-            try:
-                gr = analysis.load(d, rt.servers.get(d.name))
-            except (OSError, ValueError):
-                continue
-            matches, n = rule_svc.evaluate(rule, _rule_ctx(gr), limit=500)
-            evaluated += n
-            act = rule.get("action") or {}
-            plat = act.get("platform", "urlscan")
-            if act.get("type") == "query" and plat in rule_svc.PLATFORMS:   # preview each match's query
-                for m in matches[:200]:
-                    q = rule_svc.render_query(act["query"], gr["nodes"][m["id"]])
-                    m["query"] = q
-                    m["query_url"] = rule_svc.query_link(plat, q) if q else None
-            if matches:
-                total += len(matches)
-                per_case.append({"case": d.name, "seed": case_svc.summary(d)["seed"], "matches": matches[:200],
-                                 "count": len(matches)})
-            if total >= 2000:
-                break
-        return {"cases": per_case, "total": total, "evaluated": evaluated, "scanned": len(targets)}
-
     @bp.get("/api/rules")
     def api_rules():
-        return jsonify(items=rules.list(), schema=rule_svc.schema(),
-                       cases=[{"name": c["name"], "seed": c["seed"]} for c in case_svc.list_cases(out)])
+        items = [{**r, "url": rule_svc.query_link(r["platform"], r["query"])
+                  if r.get("platform") in rule_svc.PLATFORMS and r.get("query") else None} for r in rules.list()]
+        return jsonify(items=items, schema=rule_svc.schema())
 
     @bp.post("/api/rules")
     def api_rule_create():
@@ -608,16 +577,6 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
             return jsonify(rules.create(request.get_json(silent=True) or {})), 201
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
-
-    @bp.post("/api/rules/test")
-    def api_rule_test():
-        """Dry run of a (possibly unsaved) rule: what it matches and why. Never pivots."""
-        body = request.get_json(silent=True) or {}
-        try:
-            rule = rule_svc.validate(body.get("rule") or {})
-        except ValueError as exc:
-            return jsonify(error=str(exc)), 400
-        return jsonify(_evaluate(rule, body.get("scope") or "all"))
 
     @bp.post("/api/rules/<rid>")
     def api_rule_update(rid):
@@ -628,69 +587,13 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
 
-    @bp.post("/api/rules/<rid>/<op>")
-    def api_rule_op(rid, op):
-        body = request.get_json(silent=True) or {}
+    @bp.post("/api/rules/<rid>/delete")
+    def api_rule_delete(rid):
         try:
-            if op == "delete":
-                rules.delete(rid)
-                return jsonify(ok=True)
-            if op == "duplicate":
-                return jsonify(rules.duplicate(rid)), 201
-            if op == "toggle":
-                return jsonify(rules.patch(rid, enabled=bool(body.get("enabled"))))
-            if op == "run":
-                return jsonify(_run_rule(rules.get(rid), body.get("case") or "", bool(body.get("execute"))))
+            rules.delete(rid)
         except LookupError:
             return jsonify(error="no such rule"), 404
-        except ValueError as exc:
-            return jsonify(error=str(exc)), 400
-        abort(404)
-
-    def _run_rule(rule: dict, case: str, execute: bool) -> dict:
-        """Evaluate a saved rule on one case's live session; with ``execute`` run its action
-        through the pivot engine on the best matches (highest fidelity first)."""
-        if not rule.get("enabled", True) and execute:
-            raise ValueError("the rule is disabled: enable it to run its action")
-        d = _case(case) if case else None
-        if not d:
-            raise ValueError("pick a case to run the rule on")
-        srv = rt.server(d)
-        matches, n = rule_svc.evaluate(rule, _rule_ctx(analysis.load(d, srv)), limit=1000)
-        launched, skipped = [], []
-        act = rule.get("action") or {"type": "none"}
-        if execute and act["type"] != "none":
-            for m in matches:
-                if len(launched) >= act.get("max", 5):
-                    break
-                node = srv.inv.g.nodes.get(m["id"])
-                if not node:
-                    continue
-                try:
-                    if act["type"] == "pivot":
-                        if m["expanded"] or node["type"] not in ("File", "Domain", "IP", "URL", "Certificate"):
-                            skipped.append({"value": m["value"], "why": "already pivoted" if m["expanded"] else "not pivotable"})
-                            continue
-                        job = srv.submit(m["id"], act["sources"], False)
-                        launched.append({"job": job["id"], "value": m["value"], "kind": "pivot"})
-                    else:
-                        plat = act.get("platform", "urlscan")
-                        if plat not in rule_svc.PLATFORMS:   # saved before that platform was removed
-                            raise ValueError(f"the {plat} platform is not available: edit the rule")
-                        q = rule_svc.render_query(act["query"], node)
-                        if not q:
-                            skipped.append({"value": m["value"], "why": "a template placeholder has no value here"})
-                            continue
-                        job = srv.submit_query(m["id"], q, rule["name"], plat)
-                        launched.append({"job": job["id"], "value": m["value"], "kind": "query", "query": q,
-                                         "url": rule_svc.query_link(plat, q)})
-                except ValueError as exc:
-                    skipped.append({"value": m["value"], "why": str(exc)})
-        run = {"at": datetime.now().isoformat(timespec="seconds"), "case": d.name, "matches": len(matches),
-               "actions": len(launched)}
-        rules.patch(rule["id"], last_run=run)
-        return {"matches": matches[:300], "count": len(matches), "evaluated": n, "launched": launched,
-                "skipped": skipped, "case": d.name, "run": run}
+        return jsonify(ok=True)
 
     app.register_blueprint(bp)
 

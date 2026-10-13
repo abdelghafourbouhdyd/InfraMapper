@@ -41,7 +41,7 @@ def test_pages_render(client):
 
 
 def test_post_needs_csrf_header(client):
-    assert client.post("/api/rules/test", json={}).status_code == 403
+    assert client.post("/api/rules", json={}).status_code == 403
 
 
 def test_keys_are_masked_and_never_returned(client, monkeypatch):
@@ -79,23 +79,12 @@ def test_pivot_scores_api(client):
 
 
 def test_rule_lifecycle(client):
-    rule = {"name": "certs on flagged IPs", "target": "Certificate", "relations": [
-        {"rel": "USES_CERT", "direction": "in", "target_type": "IP", "conditions": [{"field": "vt_malicious", "op": "gte", "value": 1}]}]}
-    r = client.post("/api/rules/test", json={"rule": rule, "scope": "all"}, headers=H)
-    assert r.status_code == 200
-    t = r.get_json()
-    assert t["total"] == 1 and t["cases"][0]["matches"][0]["value"] == "a" * 64
-    assert any("198.51.100.7" in why for why in t["cases"][0]["matches"][0]["reasons"])
-    # query action: each match previews the query in the chosen platform's syntax, with a link
-    urlscan = {**rule, "action": {"type": "query", "platform": "urlscan", "query": "hash:{value}"}}
-    m = client.post("/api/rules/test", json={"rule": urlscan}, headers=H).get_json()["cases"][0]["matches"][0]
-    assert m["query"] == "hash:" + "a" * 64
-    assert m["query_url"] == "https://urlscan.io/search/#hash%3A" + "a" * 64
-    r = client.post("/api/rules/test", json={"rule": {**rule, "name": ""}}, headers=H)
+    rule = {"name": "favicon", "platform": "urlscan", "query": "hash:" + "a" * 64, "fidelity": "high", "confidence": "low"}
+    r = client.post("/api/rules", json={**rule, "name": ""}, headers=H)
     assert r.status_code == 400 and "name" in r.get_json()["error"]
     created = client.post("/api/rules", json=rule, headers=H).get_json()
-    assert client.get("/api/rules").get_json()["items"][0]["id"] == created["id"]
-    assert client.post(f"/api/rules/{created['id']}/toggle", json={"enabled": False}, headers=H).get_json()["enabled"] is False
-    assert client.post(f"/api/rules/{created['id']}/duplicate", headers=H).status_code == 201
+    item = client.get("/api/rules").get_json()["items"][0]
+    assert item["id"] == created["id"] and item["url"] == "https://urlscan.io/search/#hash%3A" + "a" * 64
+    assert client.post(f"/api/rules/{created['id']}", json={**rule, "fidelity": "low"}, headers=H).get_json()["fidelity"] == "low"
     assert client.post(f"/api/rules/{created['id']}/delete", headers=H).get_json() == {"ok": True}
     assert client.post("/api/rules/nope/delete", headers=H).status_code == 404
