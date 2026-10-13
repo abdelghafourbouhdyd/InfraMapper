@@ -1074,6 +1074,8 @@ class Investigator:
             self.hunt_queries.append({"platform": "Shodan", "query": f"ssl.jarm:{jarm}"})
 
     def _vt_intel_pivot(self, pivot_id: str, query: str, kind: str) -> None:
+        if not cluster.search_enabled(kind):
+            return
         objs = self.vt.intel_search(query, self.cfg.limit)
         self.pivots.append({"source": "VT Intelligence", "kind": kind, "query": query,
                             "total": len(objs), "broad": False})
@@ -1486,7 +1488,7 @@ class Investigator:
 
         Too broad and ``ctx`` (the scan the pivot came from) given: tighten it step by step and
         pivot on the first version specific enough to expand (see _refine)."""
-        if any(p["query"] == query for p in self.pivots):
+        if any(p["query"] == query for p in self.pivots) or not cluster.search_enabled(kind):
             return
         total, results = self.us.search(query, 100)
         if total > self.cfg.broad and ctx is not None and self.cfg.refine:

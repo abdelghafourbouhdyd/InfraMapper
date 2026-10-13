@@ -55,6 +55,7 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
     jobs = JobRunner(root, out)
     keys = KeyChecker(root / ".cache")
     rules = RuleStore(out / "hunt_rules.json")
+    rules.apply()   # combinations and pivot tuning for the graph sessions run in this process
     md = _md()
     password = os.getenv("INFRAMAPPER_WEB_PASSWORD", "")
     bp = Blueprint("ui", __name__)
@@ -569,31 +570,34 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
     def api_rules():
         items = [{**r, "url": rule_svc.query_link(r["platform"], r["query"])
                   if r.get("platform") in rule_svc.PLATFORMS and r.get("query") else None} for r in rules.list()]
-        return jsonify(items=items, schema=rule_svc.schema())
+        return jsonify(items=items, combos=rules.list("combos"), pivots=rules.pivots(), schema=rule_svc.schema())
 
-    @bp.post("/api/rules")
-    def api_rule_create():
+    def _rule_write(fn, *a, created=False):
+        """Run a store change; combinations and pivot tuning go to the engine right away."""
         try:
-            return jsonify(rules.create(request.get_json(silent=True) or {})), 201
+            res = fn(*a)
+        except LookupError as exc:
+            return jsonify(error=str(exc)), 404
         except ValueError as exc:
             return jsonify(error=str(exc)), 400
+        rules.apply()
+        return jsonify(res if res is not None else {"ok": True}), 201 if created else 200
 
-    @bp.post("/api/rules/<rid>")
-    def api_rule_update(rid):
-        try:
-            return jsonify(rules.update(rid, request.get_json(silent=True) or {}))
-        except LookupError:
-            return jsonify(error="no such rule"), 404
-        except ValueError as exc:
-            return jsonify(error=str(exc)), 400
+    @bp.post("/api/<any(rules, combos):section>")
+    def api_rule_create(section):
+        return _rule_write(rules.create, request.get_json(silent=True) or {}, section, created=True)
 
-    @bp.post("/api/rules/<rid>/delete")
-    def api_rule_delete(rid):
-        try:
-            rules.delete(rid)
-        except LookupError:
-            return jsonify(error="no such rule"), 404
-        return jsonify(ok=True)
+    @bp.post("/api/<any(rules, combos):section>/<rid>")
+    def api_rule_update(section, rid):
+        return _rule_write(rules.update, rid, request.get_json(silent=True) or {}, section)
+
+    @bp.post("/api/<any(rules, combos):section>/<rid>/delete")
+    def api_rule_delete(section, rid):
+        return _rule_write(rules.delete, rid, section)
+
+    @bp.post("/api/pivots/<key>")
+    def api_pivot_tune(key):
+        return _rule_write(rules.tune_pivot, key, request.get_json(silent=True) or {})
 
     app.register_blueprint(bp)
 

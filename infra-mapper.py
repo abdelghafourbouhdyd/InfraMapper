@@ -219,6 +219,8 @@ def main() -> int:
     args = ap.parse_args()
     if args.verbose:
         log.setLevel("DEBUG")
+    from inframapper.rules import RuleStore
+    RuleStore(args.out / "hunt_rules.json").apply()   # pivot combinations and tuning from the hunting-rules page
     if args.web:
         from inframapper.web.app import serve as serve_web
         serve_web(HERE, args.out.resolve(), args.web_host, args.web_port, not args.no_browser)

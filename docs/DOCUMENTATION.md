@@ -459,7 +459,8 @@ Mnemonic's free quota is small; a `MNEMONIC_API_KEY` or CIRCL account makes this
 ## 11. Hunting rules: your own hunting logic
 
 Web UI → **Hunting rules**. A rule is a saved piece of pivoting logic: a query you run on a platform to
-find more of an actor's infrastructure. Rules are stored in `cases/hunt_rules.json`.
+find more of an actor's infrastructure. The same page holds pivot combinations and the tuning of the
+built-in pivots (below). Everything is stored in `cases/hunt_rules.json`.
 
 | Field | What it holds |
 |---|---|
@@ -478,6 +479,44 @@ Examples:
 | Kit page title | urlscan | `page.title:"Sign in to your account"` | medium | medium |
 | Favicon reuse | urlscan | `hash:<favicon sha256>` | high | medium |
 | C2 TLS fingerprint | VT | `entity:domain jarm:<jarm>` | low | low |
+
+### Pivot combinations
+
+A combination says how much several pivots are worth **together**: e.g. *favicon + page title →
+confidence 80*. When a discovered host shares **every** pivot of the combination with the **same**
+confirmed host, the combination replaces the sum of those pivots:
+
+- **Cluster**: the confidence becomes evidence points (85+ → 3, 60+ → 2, 30+ → 1, below 30 → 0;
+  2 points join the cluster). A low confidence can therefore also *stop* a combination that would
+  otherwise confirm a host (favicon 1 + title 1 = 2 by default).
+- **Scores**: the host's confidence is raised to the combination's confidence
+  ([section 14](#14-fidelity-and-confidence-scores)), with the rule named in its factors.
+
+If several combinations match, the one with the most pivots wins, then the highest confidence.
+A host sharing only part of a combination is scored pivot by pivot, as usual.
+
+### Built-in pivots
+
+The pivots every investigation runs can be tuned on the same page:
+
+| Pivot | Default confidence | Points | Search can be switched off |
+|---|---|---|---|
+| HTML body hash, first-party script hash | 85 | 3 | yes |
+| TLS certificate, SOA contact email | 85 | 3 | no |
+| URL path, imphash, vhash | 65 | 2 | yes |
+| Analyst query | 65 | 2 | no |
+| Favicon hash, page title, JARM | 40 | 1 | yes |
+| Name server, mail server | 40 | 1 | no |
+| Domain-name pattern / other search | 40 | 1 | yes (automatic domain-pattern searches only) |
+
+- **Confidence** sets what sharing one such artefact with a confirmed host is worth, in the cluster
+  (points as above) and in the scores (how much confidence passes through the artefact).
+- **Search** off skips that urlscan / VT Intelligence lookup. Artefacts already found still count as
+  evidence. Analyst queries and regex hunts always run.
+- **Reset** puts a pivot back to its default.
+
+Combinations and tuning are stored in `cases/hunt_rules.json` and apply to new investigations and
+pivots; existing cases change when they are re-clustered (next pivot or re-run).
 
 ---
 
@@ -668,7 +707,7 @@ Same engine and same `cases/` folder as the CLI.
 | Cases | every case; per case: report, IOC table (filter, copy, CSV), pivot results, threat reports, live pivot graph, Suricata / IOC lists, exports |
 | Knowledge base | analyst verdicts; rebuild from cases |
 | Threat reports | search the dataset; start an ingestion |
-| Hunting rules | saved pivoting logic: platform, query, fidelity and confidence ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
+| Hunting rules | saved pivoting logic (platform, query, fidelity, confidence), pivot combinations with their own confidence, tuning of the built-in pivots ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
 | API keys & settings | add, test, remove keys per provider; status valid / invalid / quota exhausted / keyless / untested |
 
 ![Dashboard](screenshots/dashboard.png)

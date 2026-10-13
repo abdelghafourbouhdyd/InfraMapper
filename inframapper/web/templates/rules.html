@@ -2,7 +2,7 @@
 {% block content %}
 <div class="page-header">
   <div><h1 class="page-title"><i class="bi bi-funnel-fill me-2"></i>Hunting rules</h1>
-    <div class="page-subtitle">Saved pivoting logic: a query on a platform, rated for fidelity and confidence.</div></div>
+    <div class="page-subtitle">Saved pivoting logic, combinations of pivots with their own confidence, and tuning of the built-in pivots.</div></div>
   <button class="btn btn-sm btn-primary" id="new"><i class="bi bi-plus-lg me-1"></i>New rule</button>
 </div>
 
@@ -24,6 +24,30 @@
         <div class="ms-auto"><button class="btn btn-sm btn-primary" id="save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save rule</button></div>
       </div>
     </div>
+
+    <div class="panel" id="combo-editor">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-diagram-3"></i><span id="c-title">New pivot combination</span></h2>
+        <button class="btn btn-xs btn-outline-secondary ms-auto" id="c-new"><i class="bi bi-plus-lg"></i> New</button></div>
+      <div class="panel-body">
+        <div class="small-muted mb-2">When a found host shares <b>all</b> these pivots with the same confirmed host, it gets this confidence instead of the sum of the parts (and joins the cluster at 60+).</div>
+        <div class="row g-2">
+          <div class="col-md-8"><label class="form-label small-muted" for="c-name">Name *</label><input class="form-control form-control-sm" id="c-name" maxlength="120" placeholder="e.g. Kit reuse: favicon + title"></div>
+          <div class="col-md-4"><label class="form-label small-muted" for="c-conf">Confidence (0-100) *</label><input class="form-control form-control-sm" id="c-conf" type="number" min="0" max="100" value="80"></div>
+          <div class="col-12"><div class="form-label small-muted">Pivots (at least two) *</div><div id="c-pivots" class="d-flex flex-wrap gap-3 small"></div></div>
+        </div>
+        <div class="field-err" id="c-err" role="alert"></div>
+      </div>
+      <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0">
+        <div class="ms-auto"><button class="btn btn-sm btn-primary" id="c-save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save combination</button></div>
+      </div>
+      <div class="panel-body flush" id="combo-list"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-sliders"></i>Built-in pivots</h2><span class="panel-meta ms-auto">used by every investigation</span></div>
+      <div class="panel-body pb-0 small-muted">Confidence = what sharing one such artefact with a confirmed host is worth (85+ → 3 points, 60+ → 2, 30+ → 1, below 30 → ignored; 2 points join the cluster). “Search” turns the pivot's lookup on or off. Changes apply to new investigations and pivots.</div>
+      <div class="panel-body"><table class="table table-sm mb-0"><thead><tr><th>Pivot</th><th>Confidence</th><th>Points</th><th>Search</th><th></th></tr></thead><tbody id="pivot-rows"></tbody></table></div>
+    </div>
   </div>
   <div>
     <div class="panel">
@@ -37,7 +61,7 @@
 <script>
 (function () {
   const {esc} = IO;
-  let S, RULES = [], editing = null;
+  let S, RULES = [], COMBOS = [], PIVOTS = [], editing = null, comboEditing = null;
   const $ = id => document.getElementById(id);
   const opts = (list, sel) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
 
@@ -83,15 +107,71 @@
     } catch (e) { $('ed-err').textContent = e.message; }
   }
 
+  // ── pivot combinations
+  const pivotNames = keys => keys.map(k => S.pivots[k] || k).join(' + ');
+  function fillCombo(c) {
+    c = c || {};
+    comboEditing = c.id || null;
+    $('c-title').textContent = comboEditing ? 'Edit pivot combination' : 'New pivot combination';
+    $('c-name').value = c.name || '';
+    $('c-conf').value = c.confidence ?? 80;
+    $('c-pivots').innerHTML = Object.entries(S.pivots).map(([k, l]) => `<label><input type="checkbox" class="form-check-input" data-cp value="${esc(k)}" ${(c.pivots || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('');
+    $('c-err').textContent = '';
+    renderCombos();
+  }
+  function renderCombos() {
+    $('combo-list').innerHTML = COMBOS.map(c => `<div class="p-3 d-flex align-items-start gap-2" style="border-top:1px solid var(--border);${c.id === comboEditing ? 'background:var(--accent-glow)' : ''}">
+      <div style="flex:1;min-width:0"><a href="#" data-copen="${c.id}" class="fw-semibold">${esc(c.name)}</a>
+        <div class="small-muted">${esc(pivotNames(c.pivots))} → confidence ${c.confidence}</div></div>
+      <button class="btn btn-xs btn-outline-secondary" data-copen="${c.id}">Edit</button>
+      <button class="btn btn-xs btn-outline-danger" data-crm="${c.id}" aria-label="Delete combination"><i class="bi bi-trash"></i></button></div>`).join('')
+      || '<div class="empty-state"><i class="bi bi-diagram-3"></i>No combinations yet.</div>';
+    document.querySelectorAll('[data-copen]').forEach(a => a.onclick = e => { e.preventDefault(); fillCombo(COMBOS.find(x => x.id === a.dataset.copen)); });
+    document.querySelectorAll('[data-crm]').forEach(b => b.onclick = async () => { const c = COMBOS.find(x => x.id === b.dataset.crm);
+      if (!await IO.confirm('Delete combination', `Delete “${c.name}”?`)) return;
+      try { await IO.post(`/api/combos/${c.id}/delete`); await reload(); if (comboEditing === c.id) fillCombo(null); else renderCombos(); IO.toast('Combination deleted', 'ok'); } catch (e) { IO.err(e); } });
+  }
+  async function saveCombo() {
+    $('c-err').textContent = '';
+    const body = {name: $('c-name').value, confidence: $('c-conf').value,
+      pivots: [...document.querySelectorAll('[data-cp]:checked')].map(x => x.value)};
+    try {
+      const c = comboEditing ? await IO.post(`/api/combos/${comboEditing}`, body) : await IO.post('/api/combos', body);
+      await reload(); fillCombo(COMBOS.find(x => x.id === c.id)); IO.toast('Combination saved', 'ok');
+    } catch (e) { $('c-err').textContent = e.message; }
+  }
+
+  // ── built-in pivots
+  const pts = c => c >= 85 ? 3 : c >= 60 ? 2 : c >= 30 ? 1 : 0;
+  function renderPivots() {
+    $('pivot-rows').innerHTML = PIVOTS.map(p => `<tr data-pv="${esc(p.key)}">
+      <td>${esc(p.label)}${p.tuned ? ' <span class="bpb src">tuned</span>' : ''}<div class="small-muted">default ${p.default}</div></td>
+      <td><input class="form-control form-control-sm" style="width:5.5rem" type="number" min="0" max="100" value="${p.confidence}" data-pc aria-label="Confidence for ${esc(p.label)}"></td>
+      <td data-pp>${p.points}</td>
+      <td>${p.searchable ? `<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" data-ps ${p.search ? 'checked' : ''} aria-label="Search for ${esc(p.label)}"></div>` : '<span class="small-muted">—</span>'}</td>
+      <td class="text-end text-nowrap"><button class="btn btn-xs btn-primary" data-psave>Save</button>
+        ${p.tuned ? '<button class="btn btn-xs btn-outline-secondary" data-preset>Reset</button>' : ''}</td></tr>`).join('');
+    document.querySelectorAll('[data-pv]').forEach(row => {
+      const key = row.dataset.pv, p = PIVOTS.find(x => x.key === key), sw = row.querySelector('[data-ps]');
+      const send = async body => { try { await IO.post(`/api/pivots/${key}`, body); await reload(); IO.toast(`${p.label} saved`, 'ok'); } catch (e) { IO.err(e); } };
+      row.querySelector('[data-pc]').oninput = e => { row.querySelector('[data-pp]').textContent = pts(+e.target.value); };
+      row.querySelector('[data-psave]').onclick = () => send({confidence: row.querySelector('[data-pc]').value, search: sw ? sw.checked : true});
+      const reset = row.querySelector('[data-preset]');
+      if (reset) reset.onclick = () => send({confidence: p.default, search: true});
+    });
+  }
+
   async function reload() {
     const r = await IO.get('/api/rules');
-    S = r.schema; RULES = r.items;
-    renderList();
+    S = r.schema; RULES = r.items; COMBOS = r.combos; PIVOTS = r.pivots;
+    renderList(); renderCombos(); renderPivots();
   }
 
   $('new').onclick = () => fill(null);
   $('save').onclick = e => IO.busy(e.currentTarget, save);
-  reload().then(() => fill(null)).catch(e => { $('rule-list').innerHTML = IO.errorBox(e); });
+  $('c-new').onclick = () => fillCombo(null);
+  $('c-save').onclick = e => IO.busy(e.currentTarget, saveCombo);
+  reload().then(() => { fill(null); fillCombo(null); }).catch(e => { $('rule-list').innerHTML = IO.errorBox(e); });
 })();
 </script>
 {% endblock %}

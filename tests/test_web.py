@@ -87,4 +87,13 @@ def test_rule_lifecycle(client):
     assert item["id"] == created["id"] and item["url"] == "https://urlscan.io/search/#hash%3A" + "a" * 64
     assert client.post(f"/api/rules/{created['id']}", json={**rule, "fidelity": "low"}, headers=H).get_json()["fidelity"] == "low"
     assert client.post(f"/api/rules/{created['id']}/delete", headers=H).get_json() == {"ok": True}
+    # pivot combinations and built-in pivot tuning
+    combo = client.post("/api/combos", json={"name": "kit", "pivots": ["favicon", "title"], "confidence": 80}, headers=H)
+    assert combo.status_code == 201
+    d = client.get("/api/rules").get_json()
+    assert d["combos"][0]["name"] == "kit" and {p["key"] for p in d["pivots"]} >= {"title", "favicon", "html"}
+    assert client.post("/api/pivots/title", json={"confidence": 10, "search": False}, headers=H).get_json()["points"] == 0
+    assert client.post("/api/pivots/title", json={"confidence": 40}, headers=H).get_json()["tuned"] is False
+    assert client.post("/api/pivots/nope", json={"confidence": 1}, headers=H).status_code == 404
+    assert client.post(f"/api/combos/{combo.get_json()['id']}/delete", headers=H).get_json() == {"ok": True}
     assert client.post("/api/rules/nope/delete", headers=H).status_code == 404

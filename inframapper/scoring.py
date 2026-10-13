@@ -33,9 +33,10 @@ Method
    confidences, like a "weakest links" path), then corroboration from other already-scored
    neighbours with diminishing returns (2nd support x0.5, 3rd x0.25: supports can share upstream
    evidence). Passing *through* a shared artefact costs its specificity, reusing cluster.py's
-   artefact weights (HTML body / script / cert / SOA 3 -> 0.85, url path / imphash 2 -> 0.65,
-   title / favicon / JARM / NS 1 -> 0.40); shared hosting, CDNs, commodity NS and noisy hubs
-   pass almost nothing (0.15). One source group alone is capped at 80.
+   pivot confidences (defaults: HTML body / script / cert / SOA 0.85, url path / imphash 0.65,
+   title / favicon / JARM / NS 0.40; tunable on the hunting-rules page); shared hosting, CDNs,
+   commodity NS and noisy hubs pass almost nothing (0.15). One source group alone is capped at 80.
+   A matched combination rule (cluster.py) lifts the host to that rule's confidence.
 
 3. Fidelity = 100 x (0.30 specificity + 0.25 confidence + 0.20 context + 0.15 threat signal
    + 0.10 freshness) x false-positive risk x relevance gate. The gate (0.4 + 0.6 x confidence /
@@ -53,7 +54,7 @@ import time
 from datetime import datetime, timezone
 
 from . import graph as g
-from .cluster import HOSTS, PIVOTS, _weight as artefact_weight
+from .cluster import HOSTS, PIVOTS, pivot_confidence
 
 METHOD = {
     "name": "heuristic-v1",
@@ -183,8 +184,7 @@ def hub_factor(n: dict, degree: int) -> tuple[float, str | None]:
             return .15, "shared / benign infrastructure"
         f = 1.0
     elif t in PIVOTS or t in (g.HTML_HASH, g.SCRIPT, g.CERT, g.FAVICON, g.TITLE, g.JARM, g.SOA, g.NS, g.MX):
-        w = artefact_weight(n)
-        f = {3: .85, 2: .65, 1: .40}.get(w, .15)
+        f = max(pivot_confidence(n) / 100, .15)
         if t == g.CERT and p.get("shared_cert"):
             f = min(f, .30)
     else:   # ASN, reports, labels: many unrelated members
@@ -328,6 +328,12 @@ class Scorer:
                 factors.append({"kind": "limit", "label": f"single source group ({next(iter(groups))}): capped at 80"})
             if not supports and u not in start:
                 limited.append("no path to the seed")
+            rm = nodes[u]["props"].get("rule_match")
+            if rm and u not in start and rm["confidence"] / 100 > c:   # an analyst combination rule says so
+                c = rm["confidence"] / 100
+                factors.append({"kind": "support", "label": f"hunting rule “{rm['name']}” matched: "
+                                                            f"confidence set to {rm['confidence']}",
+                                "value": rm["confidence"]})
             p = nodes[u]["props"]
             if p.get("warninglist") and u != seed:
                 c *= .5
@@ -486,8 +492,7 @@ def artefact_edge(kind: str, props: dict, now: float | None = None) -> dict:
                "certificate": g.CERT}
     if k in by_type:
         fake = {"type": by_type[k], "value": k, "props": {}}
-    w = artefact_weight(fake)
-    spec = {3: .85, 2: .65, 1: .40}.get(w, .15)
+    spec = max(pivot_confidence(fake) / 100, .15)
     grp, rel_w = source_info(props.get("source") or "urlscan")
     fresh, fresh_why = freshness(ts(props.get("date")), now or time.time())
     c = round(.75 * rel_w * spec * fresh * 100)
