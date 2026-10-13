@@ -5,9 +5,6 @@
 Every indicator leads to the infrastructure behind it: the IPs it resolved to, the certificates it shares,
 the pages built from the same kit. InfraMapper follows those links and maps them.
 
-IOC investigation and pivoting tool. Give it a hash, IP, domain or URL (defanged is fine), or a threat report, and it
-pivots through VirusTotal, urlscan.io and passive DNS, builds a relationship graph, checks each IOC against public
-reporting and feeds, and triages it: block, hunt or ignore.
 
 ![Pivot graph](docs/screenshots/graph.png)
 
@@ -18,7 +15,6 @@ reporting and feeds, and triages it: block, hunt or ignore.
 - Cluster scoring on specific shared artefacts; CDNs, shared hosting and broad pivots are kept out.
 - Prior reporting and feeds: OTX, ThreatFox, MalwareBazaar, URLhaus, Feodo, C2IntelFeeds, OpenPhish, Spamhaus DROP,
   GreyNoise, AbuseIPDB, Shodan InternetDB, VT comments / YARA / sandboxes.
-- Triage per IOC: `P1` block now, `P2` block + retro-hunt, `P3` hunt, `noise` don't block. What every label means: [documentation, section 4](docs/DOCUMENTATION.md#4-labels-at-a-glance).
 - Attribution overlap across sources, with aliases merged (MISP galaxy, Malpedia) and timing checks.
 - Report triage (`--from`): extracts IOCs from a PDF, web page or text and triages them.
 - Regex and newly-registered-domain hunts.
