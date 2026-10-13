@@ -2,56 +2,58 @@
 {% block content %}
 <div class="page-header">
   <div><h1 class="page-title"><i class="bi bi-funnel-fill me-2"></i>Hunting rules</h1>
-    <div class="page-subtitle">Saved pivoting logic, combinations of pivots with their own confidence, and tuning of the built-in pivots.</div></div>
-  <button class="btn btn-sm btn-primary" id="new"><i class="bi bi-plus-lg me-1"></i>New rule</button>
+    <div class="page-subtitle">Tune the pivots every investigation runs, and add your own pivot logic built from attributes of each host (page title, favicon, domain…), never from fixed values.</div></div>
+</div>
+
+<div class="panel">
+  <div class="panel-head"><h2 class="panel-title"><i class="bi bi-sliders"></i>Built-in pivots</h2><span class="panel-meta ms-auto">used by every investigation · changes apply to new runs and pivots</span></div>
+  <div class="panel-body pb-0 small-muted">Confidence = what sharing one such artefact with a confirmed host is worth (85+ → 3 points, 60+ → 2, 30+ → 1, below 30 → ignored; 2 points join the cluster). Fidelity = how specific the artefact is (pivot scores).</div>
+  <div class="panel-body"><div class="table-responsive"><table class="table table-sm mb-0">
+    <thead><tr><th>Pivot</th><th>On</th><th>Confidence</th><th>Fidelity</th><th>Parameters</th><th></th></tr></thead>
+    <tbody id="pivot-rows"></tbody></table></div></div>
 </div>
 
 <div class="grid-main-side">
   <div>
     <div class="panel" id="editor">
-      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-pencil-square"></i><span id="ed-title">New rule</span></h2></div>
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-diagram-3"></i><span id="ed-title">New pivot logic</span></h2>
+        <button class="btn btn-xs btn-outline-secondary ms-auto" id="new"><i class="bi bi-plus-lg"></i> New</button></div>
       <div class="panel-body">
         <div class="row g-2">
-          <div class="col-md-8"><label class="form-label small-muted" for="r-name">Rule name *</label><input class="form-control form-control-sm" id="r-name" maxlength="120" placeholder="e.g. Phishing kit page title"></div>
+          <div class="col-md-8"><label class="form-label small-muted" for="r-name">Rule name *</label><input class="form-control form-control-sm" id="r-name" maxlength="120" placeholder="e.g. Kit reuse: same title and favicon"></div>
           <div class="col-md-4"><label class="form-label small-muted" for="r-plat">Platform *</label><select class="form-select form-select-sm" id="r-plat"></select></div>
-          <div class="col-12"><label class="form-label small-muted" for="r-query">Query *</label><input class="form-control form-control-sm mono" id="r-query" maxlength="500" placeholder='e.g. page.title:"Sign in" or hash:&lt;favicon hash&gt;'></div>
-          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-fid">Fidelity *</label><select class="form-select form-select-sm" id="r-fid"></select></div>
-          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-conf">Confidence *</label><select class="form-select form-select-sm" id="r-conf"></select></div>
         </div>
+        <div class="sec-h mt-3">Match on (all must hold)</div>
+        <div class="small-muted mb-2">Each condition uses an attribute of the host being expanded; its value is filled in per host.</div>
+        <div id="conds"></div>
+        <button class="btn btn-xs btn-outline-secondary" id="add-cond"><i class="bi bi-plus"></i> Condition</button>
+        <div class="row g-2 mt-2" id="opts">
+          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-recent">Only last N days</label><input class="form-control form-control-sm" id="r-recent" type="number" min="1" max="3650" placeholder="any"></div>
+          <div class="col-6 col-md-3"><label class="form-label small-muted" for="r-max">Max hits to expand</label><input class="form-control form-control-sm" id="r-max" type="number" min="1" max="10000" placeholder="run default"></div>
+        </div>
+        <div class="sec-h mt-3">Rating</div>
+        <div class="d-flex flex-wrap gap-3 align-items-end small">
+          <label>Confidence <input class="form-control form-control-sm" style="width:5.5rem" type="number" min="0" max="100" id="r-conf"></label>
+          <label>Fidelity <input class="form-control form-control-sm" style="width:5.5rem" type="number" min="0" max="100" id="r-fid"></label>
+          <button class="btn btn-xs btn-outline-secondary" id="suggest" title="From the attributes you combined">Suggest</button>
+          <span class="small-muted" id="sugg"></span>
+          <label class="ms-auto"><input type="checkbox" class="form-check-input" id="r-enabled" checked> Enabled</label>
+        </div>
+        <div class="sec-h mt-3">Search it runs</div>
+        <code class="small wrap-any d-block" id="tpl">—</code>
         <div class="field-err" id="ed-err" role="alert"></div>
       </div>
       <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0">
+        <select class="form-select form-select-sm" id="scope" style="width:auto;max-width:260px" aria-label="Case to preview on"></select>
+        <button class="btn btn-sm btn-outline-primary" id="preview" data-busy="Previewing…"><i class="bi bi-eye me-1"></i>Preview on case</button>
         <div class="ms-auto"><button class="btn btn-sm btn-primary" id="save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save rule</button></div>
       </div>
     </div>
-
-    <div class="panel" id="combo-editor">
-      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-diagram-3"></i><span id="c-title">New pivot combination</span></h2>
-        <button class="btn btn-xs btn-outline-secondary ms-auto" id="c-new"><i class="bi bi-plus-lg"></i> New</button></div>
-      <div class="panel-body">
-        <div class="small-muted mb-2">When a found host shares <b>all</b> these pivots with the same confirmed host, it gets this confidence instead of the sum of the parts (and joins the cluster at 60+).</div>
-        <div class="row g-2">
-          <div class="col-md-8"><label class="form-label small-muted" for="c-name">Name *</label><input class="form-control form-control-sm" id="c-name" maxlength="120" placeholder="e.g. Kit reuse: favicon + title"></div>
-          <div class="col-md-4"><label class="form-label small-muted" for="c-conf">Confidence (0-100) *</label><input class="form-control form-control-sm" id="c-conf" type="number" min="0" max="100" value="80"></div>
-          <div class="col-12"><div class="form-label small-muted">Pivots (at least two) *</div><div id="c-pivots" class="d-flex flex-wrap gap-3 small"></div></div>
-        </div>
-        <div class="field-err" id="c-err" role="alert"></div>
-      </div>
-      <div class="panel-head" style="border-top:1px solid var(--border);border-bottom:0">
-        <div class="ms-auto"><button class="btn btn-sm btn-primary" id="c-save" data-busy="Saving…"><i class="bi bi-save me-1"></i>Save combination</button></div>
-      </div>
-      <div class="panel-body flush" id="combo-list"></div>
-    </div>
-
-    <div class="panel">
-      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-sliders"></i>Built-in pivots</h2><span class="panel-meta ms-auto">used by every investigation</span></div>
-      <div class="panel-body pb-0 small-muted">Confidence = what sharing one such artefact with a confirmed host is worth (85+ → 3 points, 60+ → 2, 30+ → 1, below 30 → ignored; 2 points join the cluster). “Search” turns the pivot's lookup on or off. Changes apply to new investigations and pivots.</div>
-      <div class="panel-body"><table class="table table-sm mb-0"><thead><tr><th>Pivot</th><th>Confidence</th><th>Points</th><th>Search</th><th></th></tr></thead><tbody id="pivot-rows"></tbody></table></div>
-    </div>
+    <div id="results"></div>
   </div>
   <div>
     <div class="panel">
-      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-collection"></i>Saved rules</h2><span class="panel-meta ms-auto" id="n-rules"></span></div>
+      <div class="panel-head"><h2 class="panel-title"><i class="bi bi-collection"></i>Your pivot logic</h2><span class="panel-meta ms-auto" id="n-rules"></span></div>
       <div class="panel-body flush" id="rule-list">{% for i in range(3) %}<div class="p-3"><span class="skel mb-2" style="width:60%"></span><span class="skel" style="width:85%"></span></div>{% endfor %}</div>
     </div>
   </div>
@@ -61,117 +63,160 @@
 <script>
 (function () {
   const {esc} = IO;
-  let S, RULES = [], COMBOS = [], PIVOTS = [], editing = null, comboEditing = null;
+  let S, RULES = [], PIVOTS = [], CASES = [], editing = null;
   const $ = id => document.getElementById(id);
   const opts = (list, sel) => list.map(([v, l]) => `<option value="${esc(v)}" ${v === sel ? 'selected' : ''}>${esc(l)}</option>`).join('');
+  const pts = c => c >= 85 ? 3 : c >= 60 ? 2 : c >= 30 ? 1 : 0;
 
+  // ── built-in pivots
+  const PARAM = {template: 'search template', max_hits: 'max hits', refine: 'auto-refine', steps: 'regex steps'};
+  const paramText = (p, v) => p === 'refine' ? (v ? 'auto-refine on' : 'auto-refine off') : p === 'template' ? v
+    : `${PARAM[p]} ${v ?? 'run default'}`;
+  function renderPivots() {
+    $('pivot-rows').innerHTML = PIVOTS.map(p => { const c = p.current; return `<tr>
+      <td><b>${esc(p.label)}</b>${p.tuned.length ? ' <span class="bpb src">tuned</span>' : ''}<div class="small-muted">${esc(p.about)}</div></td>
+      <td>${p.searchable ? (c.enabled ? '<span class="kstate valid">on</span>' : '<span class="kstate">off</span>') : '<span class="small-muted">—</span>'}</td>
+      <td>${c.confidence} <span class="small-muted">(${p.points} pt${p.points === 1 ? '' : 's'})</span></td>
+      <td>${c.fidelity}</td>
+      <td class="small">${p.params.map(k => `<div class="${k === 'template' ? 'mono wrap-any' : ''}">${esc(paramText(k, c[k]))}</div>`).join('') || '<span class="small-muted">—</span>'}</td>
+      <td class="text-end"><button class="btn btn-xs btn-outline-secondary" data-pedit="${esc(p.key)}">Edit</button></td></tr>`; }).join('');
+    document.querySelectorAll('[data-pedit]').forEach(b => b.onclick = () => pivotDialog(PIVOTS.find(p => p.key === b.dataset.pedit)));
+  }
+  function pivotDialog(p) {
+    const c = p.current, d = p.defaults;
+    const field = k => k === 'refine'
+      ? `<label class="small d-block mt-2"><input type="checkbox" class="form-check-input" data-f="refine" ${c.refine ? 'checked' : ''}> Auto-refine when too broad (adds conditions from the scan until specific enough)</label>`
+      : `<label class="form-label small-muted mt-2 mb-0">${esc(PARAM[k])} <span class="small-muted">(default ${esc(String(d[k] ?? 'run default'))})</span></label>
+         <input class="form-control form-control-sm ${k === 'template' ? 'mono' : ''}" data-f="${k}" ${k === 'template' ? '' : 'type="number" min="1" placeholder="run default"'} value="${esc(c[k] ?? '')}">
+         ${k === 'template' ? '<div class="small-muted">{value} = the artefact found on the host (already quote-escaped for titles).</div>' : ''}`;
+    const m = IO.modal(`Tune: ${p.label}`, `<div class="small-muted mb-2">${esc(p.about)}</div>
+      ${p.searchable ? `<label class="small d-block"><input type="checkbox" class="form-check-input" data-f="enabled" ${c.enabled ? 'checked' : ''}> Run this pivot</label>` : ''}
+      <div class="d-flex gap-3 mt-2 small">
+        <label>Confidence (default ${d.confidence})<input class="form-control form-control-sm" type="number" min="0" max="100" data-f="confidence" value="${c.confidence}"></label>
+        <label>Fidelity (default ${d.fidelity})<input class="form-control form-control-sm" type="number" min="0" max="100" data-f="fidelity" value="${c.fidelity}"></label></div>
+      <div class="small-muted" data-pts>${pts(c.confidence)} cluster point(s)</div>
+      ${p.params.map(field).join('')}<div class="field-err mt-2" data-err></div>`,
+      {footer: '<button class="btn btn-sm btn-outline-secondary me-auto" data-reset>Reset to defaults</button><button class="btn btn-sm btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-sm btn-primary" data-ok>Save</button>'});
+    const el = m.el;
+    el.querySelector('[data-f="confidence"]').oninput = e => { el.querySelector('[data-pts]').textContent = `${pts(+e.target.value)} cluster point(s)`; };
+    const send = async body => {
+      try { await IO.post(`/api/pivots/${p.key}`, body); m.close(); await reload(); IO.toast(`${p.label} saved`, 'ok'); }
+      catch (e) { el.querySelector('[data-err]').textContent = e.message; }
+    };
+    el.querySelector('[data-ok]').onclick = () => {
+      const body = {};
+      el.querySelectorAll('[data-f]').forEach(i => { body[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; });
+      send(body);
+    };
+    el.querySelector('[data-reset]').onclick = () => send({});
+  }
+
+  // ── custom pivot logic
+  const attrsFor = plat => Object.entries(S.attributes).filter(([, a]) => a.platform === plat);
+  function condRow(c, plat) {
+    const list = attrsFor(plat);
+    c = c && S.attributes[c.attribute]?.platform === plat ? c : {attribute: list[0][0]};
+    const a = S.attributes[c.attribute], methods = Object.entries(a.methods);
+    const m = a.methods[c.method] ? c.method : methods[0][0];
+    return `<div class="d-flex gap-2 mb-2 flex-wrap align-items-start" data-cond>
+      <select class="form-select form-select-sm" style="width:auto" data-a aria-label="Attribute">${opts(list.map(([k, x]) => [k, x.label]), c.attribute)}</select>
+      <select class="form-select form-select-sm" style="width:auto" data-m aria-label="Match">${opts(methods.map(([k, x]) => [k, x.label]), m)}</select>
+      ${a.methods[m].param ? `<input class="form-control form-control-sm mono" style="flex:1;min-width:12rem" data-p maxlength="200" placeholder="e.g. {name}-[a-z]+ or secure-{name}" value="${esc(c.param || '')}">` : ''}
+      <button class="btn btn-xs btn-outline-danger" data-del aria-label="Remove condition"><i class="bi bi-x"></i></button>
+      <div class="small-muted w-100">${esc(a.from)}${a.methods[m].param ? ' · regex on the domain name; {name} = the host\'s name (without TLD), {tld} = its TLD' : ''}</div></div>`;
+  }
+  function readConds() {
+    return [...$('conds').querySelectorAll('[data-cond]')].map(r => ({attribute: r.querySelector('[data-a]').value,
+      method: r.querySelector('[data-m]').value, param: r.querySelector('[data-p]')?.value || null}));
+  }
+  function drawConds(conds) {
+    const plat = $('r-plat').value;
+    $('conds').innerHTML = conds.map(c => condRow(c, plat)).join('');
+    $('conds').querySelectorAll('[data-cond]').forEach(r => {
+      const redraw = () => drawConds(readConds());
+      r.querySelector('[data-a]').onchange = () => { r.querySelector('[data-m]').value = ''; redraw(); };
+      r.querySelector('[data-m]').onchange = redraw;
+      r.querySelector('[data-del]').onclick = () => { r.remove(); livePreview(); };
+      const p = r.querySelector('[data-p]'); if (p) p.oninput = livePreview;
+    });
+    $('opts').style.display = plat === 'urlscan' ? '' : 'none';
+    livePreview();
+  }
+  function readRule() {
+    return {name: $('r-name').value, platform: $('r-plat').value, conditions: readConds(),
+      recent_days: $('r-recent').value, max_hits: $('r-max').value,
+      confidence: $('r-conf').value, fidelity: $('r-fid').value, enabled: $('r-enabled').checked};
+  }
+  let liveT;
+  function livePreview() {
+    clearTimeout(liveT);
+    liveT = setTimeout(async () => {
+      try { const r = await IO.post('/api/rules/preview', {rule: readRule()}); $('tpl').textContent = r.template;
+        $('sugg').textContent = `suggested: confidence ${r.suggest.confidence}, fidelity ${r.suggest.fidelity}`; $('ed-err').textContent = ''; }
+      catch (e) { $('tpl').textContent = '—'; $('sugg').textContent = ''; $('ed-err').textContent = e.message; }
+    }, 250);
+  }
   function fill(r) {
     r = r || {};
     editing = r.id || null;
-    $('ed-title').textContent = editing ? 'Edit rule' : 'New rule';
+    $('ed-title').textContent = editing ? 'Edit pivot logic' : 'New pivot logic';
     $('r-name').value = r.name || '';
     $('r-plat').innerHTML = opts(Object.entries(S.platforms), r.platform || 'urlscan');
-    $('r-query').value = r.query || '';
-    const ratings = S.ratings.map(x => [x, x]);
-    $('r-fid').innerHTML = opts(ratings, r.fidelity || 'medium');
-    $('r-conf').innerHTML = opts(ratings, r.confidence || 'medium');
-    $('ed-err').textContent = '';
+    $('r-recent').value = r.recent_days ?? ''; $('r-max').value = r.max_hits ?? '';
+    $('r-conf').value = r.confidence ?? ''; $('r-fid').value = r.fidelity ?? '';
+    $('r-enabled').checked = r.enabled !== false;
+    $('results').innerHTML = '';
+    drawConds(r.conditions || [{attribute: 'title', method: 'exact'}, {attribute: 'favicon', method: 'exact'}]);
     renderList();
   }
-
   function renderList() {
-    $('n-rules').textContent = `${RULES.length} rule${RULES.length === 1 ? '' : 's'}`;
-    $('rule-list').innerHTML = RULES.map(r => `<div class="p-3" style="border-top:1px solid var(--border);${r.id === editing ? 'background:var(--accent-glow)' : ''}">
-      <a href="#" data-open="${r.id}" class="fw-semibold">${esc(r.name)}</a>
-      <div class="small-muted">${esc(S.platforms[r.platform] || r.platform || '?')} · fidelity ${esc(r.fidelity || '?')} · confidence ${esc(r.confidence || '?')}</div>
-      <code class="small wrap-any d-block mt-1">${esc(r.query || '')}</code>
-      <div class="d-flex gap-1 mt-2"><button class="btn btn-xs btn-outline-secondary" data-open="${r.id}">Edit</button>
-        <button class="btn btn-xs btn-outline-secondary" data-cq="${esc(r.query || '')}" title="Copy query"><i class="bi bi-clipboard"></i></button>
-        ${r.url ? `<a class="btn btn-xs btn-outline-secondary" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer" title="Open on the platform"><i class="bi bi-box-arrow-up-right"></i></a>` : ''}
-        <button class="btn btn-xs btn-outline-danger ms-auto" data-rmr="${r.id}" aria-label="Delete rule"><i class="bi bi-trash"></i></button></div></div>`).join('')
-      || '<div class="empty-state"><i class="bi bi-funnel"></i>No saved rules yet.</div>';
+    const on = RULES.filter(r => r.enabled).length;
+    $('n-rules').textContent = `${on} enabled · ${RULES.length} total`;
+    $('rule-list').innerHTML = RULES.map(r => `<div class="p-3" style="border-top:1px solid var(--border);${r.id === editing ? 'background:var(--accent-glow)' : ''}${r.enabled ? '' : ';opacity:.55'}">
+      <div class="d-flex gap-2 align-items-start"><div style="flex:1;min-width:0"><a href="#" data-open="${r.id}" class="fw-semibold">${esc(r.name)}</a>
+        <div class="small-muted">${esc(S.platforms[r.platform] || r.platform)} · confidence ${r.confidence} · fidelity ${r.fidelity}${r.enabled ? '' : ' · disabled'}</div>
+        <code class="small wrap-any d-block mt-1">${esc(r.template)}</code></div>
+        <button class="btn btn-xs btn-outline-danger" data-rmr="${r.id}" aria-label="Delete rule"><i class="bi bi-trash"></i></button></div></div>`).join('')
+      || '<div class="empty-state"><i class="bi bi-diagram-3"></i>No pivot logic yet. Build one on the left.</div>';
     document.querySelectorAll('[data-open]').forEach(a => a.onclick = e => { e.preventDefault(); fill(RULES.find(x => x.id === a.dataset.open)); });
-    document.querySelectorAll('[data-cq]').forEach(b => b.onclick = () => IO.copy(b.dataset.cq));
     document.querySelectorAll('[data-rmr]').forEach(b => b.onclick = async () => { const r = RULES.find(x => x.id === b.dataset.rmr);
       if (!await IO.confirm('Delete rule', `Delete “${r.name}”? This cannot be undone.`)) return;
-      try { await IO.post(`/api/rules/${r.id}/delete`); if (editing === r.id) editing = null; await reload(); if (!editing) fill(null); IO.toast('Rule deleted', 'ok'); } catch (e) { IO.err(e); } });
+      try { await IO.post(`/api/rules/${r.id}/delete`); await reload(); if (editing === r.id) fill(null); IO.toast('Rule deleted', 'ok'); } catch (e) { IO.err(e); } });
   }
-
   async function save() {
     $('ed-err').textContent = '';
-    const body = {name: $('r-name').value, platform: $('r-plat').value, query: $('r-query').value,
-      fidelity: $('r-fid').value, confidence: $('r-conf').value};
     try {
-      const r = editing ? await IO.post(`/api/rules/${editing}`, body) : await IO.post('/api/rules', body);
+      const r = editing ? await IO.post(`/api/rules/${editing}`, readRule()) : await IO.post('/api/rules', readRule());
       await reload(); fill(RULES.find(x => x.id === r.id)); IO.toast('Rule saved', 'ok');
     } catch (e) { $('ed-err').textContent = e.message; }
   }
-
-  // ── pivot combinations
-  const pivotNames = keys => keys.map(k => S.pivots[k] || k).join(' + ');
-  function fillCombo(c) {
-    c = c || {};
-    comboEditing = c.id || null;
-    $('c-title').textContent = comboEditing ? 'Edit pivot combination' : 'New pivot combination';
-    $('c-name').value = c.name || '';
-    $('c-conf').value = c.confidence ?? 80;
-    $('c-pivots').innerHTML = Object.entries(S.pivots).map(([k, l]) => `<label><input type="checkbox" class="form-check-input" data-cp value="${esc(k)}" ${(c.pivots || []).includes(k) ? 'checked' : ''}> ${esc(l)}</label>`).join('');
-    $('c-err').textContent = '';
-    renderCombos();
-  }
-  function renderCombos() {
-    $('combo-list').innerHTML = COMBOS.map(c => `<div class="p-3 d-flex align-items-start gap-2" style="border-top:1px solid var(--border);${c.id === comboEditing ? 'background:var(--accent-glow)' : ''}">
-      <div style="flex:1;min-width:0"><a href="#" data-copen="${c.id}" class="fw-semibold">${esc(c.name)}</a>
-        <div class="small-muted">${esc(pivotNames(c.pivots))} → confidence ${c.confidence}</div></div>
-      <button class="btn btn-xs btn-outline-secondary" data-copen="${c.id}">Edit</button>
-      <button class="btn btn-xs btn-outline-danger" data-crm="${c.id}" aria-label="Delete combination"><i class="bi bi-trash"></i></button></div>`).join('')
-      || '<div class="empty-state"><i class="bi bi-diagram-3"></i>No combinations yet.</div>';
-    document.querySelectorAll('[data-copen]').forEach(a => a.onclick = e => { e.preventDefault(); fillCombo(COMBOS.find(x => x.id === a.dataset.copen)); });
-    document.querySelectorAll('[data-crm]').forEach(b => b.onclick = async () => { const c = COMBOS.find(x => x.id === b.dataset.crm);
-      if (!await IO.confirm('Delete combination', `Delete “${c.name}”?`)) return;
-      try { await IO.post(`/api/combos/${c.id}/delete`); await reload(); if (comboEditing === c.id) fillCombo(null); else renderCombos(); IO.toast('Combination deleted', 'ok'); } catch (e) { IO.err(e); } });
-  }
-  async function saveCombo() {
-    $('c-err').textContent = '';
-    const body = {name: $('c-name').value, confidence: $('c-conf').value,
-      pivots: [...document.querySelectorAll('[data-cp]:checked')].map(x => x.value)};
+  async function preview() {
+    $('ed-err').textContent = '';
+    if (!$('scope').value) { $('ed-err').textContent = 'No case to preview on yet.'; return; }
     try {
-      const c = comboEditing ? await IO.post(`/api/combos/${comboEditing}`, body) : await IO.post('/api/combos', body);
-      await reload(); fillCombo(COMBOS.find(x => x.id === c.id)); IO.toast('Combination saved', 'ok');
-    } catch (e) { $('c-err').textContent = e.message; }
-  }
-
-  // ── built-in pivots
-  const pts = c => c >= 85 ? 3 : c >= 60 ? 2 : c >= 30 ? 1 : 0;
-  function renderPivots() {
-    $('pivot-rows').innerHTML = PIVOTS.map(p => `<tr data-pv="${esc(p.key)}">
-      <td>${esc(p.label)}${p.tuned ? ' <span class="bpb src">tuned</span>' : ''}<div class="small-muted">default ${p.default}</div></td>
-      <td><input class="form-control form-control-sm" style="width:5.5rem" type="number" min="0" max="100" value="${p.confidence}" data-pc aria-label="Confidence for ${esc(p.label)}"></td>
-      <td data-pp>${p.points}</td>
-      <td>${p.searchable ? `<div class="form-check form-switch m-0"><input class="form-check-input" type="checkbox" data-ps ${p.search ? 'checked' : ''} aria-label="Search for ${esc(p.label)}"></div>` : '<span class="small-muted">—</span>'}</td>
-      <td class="text-end text-nowrap"><button class="btn btn-xs btn-primary" data-psave>Save</button>
-        ${p.tuned ? '<button class="btn btn-xs btn-outline-secondary" data-preset>Reset</button>' : ''}</td></tr>`).join('');
-    document.querySelectorAll('[data-pv]').forEach(row => {
-      const key = row.dataset.pv, p = PIVOTS.find(x => x.key === key), sw = row.querySelector('[data-ps]');
-      const send = async body => { try { await IO.post(`/api/pivots/${key}`, body); await reload(); IO.toast(`${p.label} saved`, 'ok'); } catch (e) { IO.err(e); } };
-      row.querySelector('[data-pc]').oninput = e => { row.querySelector('[data-pp]').textContent = pts(+e.target.value); };
-      row.querySelector('[data-psave]').onclick = () => send({confidence: row.querySelector('[data-pc]').value, search: sw ? sw.checked : true});
-      const reset = row.querySelector('[data-preset]');
-      if (reset) reset.onclick = () => send({confidence: p.default, search: true});
-    });
+      const r = await IO.post('/api/rules/preview', {rule: readRule(), case: $('scope').value});
+      $('results').innerHTML = `<div class="panel"><div class="panel-head"><h2 class="panel-title"><i class="bi bi-eye"></i>Preview</h2>
+        <span class="panel-meta">${r.matched} confirmed host${r.matched === 1 ? '' : 's'} have every attribute · ${r.missing} lack one · nothing was searched</span></div>
+        <div class="panel-body">${r.hosts.map(h => `<div class="mb-2"><b class="mono small">${esc(h.type)} ${esc(IO.trunc(h.value, 80))}</b>
+          ${h.queries.map(q => `<code class="small wrap-any d-block">${esc(q)}</code>`).join('')}</div>`).join('')
+          || '<div class="empty-state"><i class="bi bi-search"></i>No confirmed host of this case has all these attributes.</div>'}</div></div>`;
+    } catch (e) { $('results').innerHTML = ''; $('ed-err').textContent = e.message; }
   }
 
   async function reload() {
     const r = await IO.get('/api/rules');
-    S = r.schema; RULES = r.items; COMBOS = r.combos; PIVOTS = r.pivots;
-    renderList(); renderCombos(); renderPivots();
+    S = r.schema; RULES = r.items; PIVOTS = r.pivots; CASES = r.cases;
+    $('scope').innerHTML = CASES.map(c => `<option value="${esc(c.name)}">${esc(IO.trunc(c.seed, 40))}</option>`).join('') || '<option value="">no cases yet</option>';
+    renderPivots(); renderList();
   }
 
   $('new').onclick = () => fill(null);
+  $('add-cond').onclick = () => { const c = readConds(); if (c.length < S.limits.conditions) drawConds([...c, null]); };
+  $('r-plat').onchange = () => drawConds(readConds());
+  $('suggest').onclick = async () => { try { const r = await IO.post('/api/rules/preview', {rule: readRule()}); $('r-conf').value = r.suggest.confidence; $('r-fid').value = r.suggest.fidelity; } catch (e) { $('ed-err').textContent = e.message; } };
   $('save').onclick = e => IO.busy(e.currentTarget, save);
-  $('c-new').onclick = () => fillCombo(null);
-  $('c-save').onclick = e => IO.busy(e.currentTarget, saveCombo);
-  reload().then(() => { fill(null); fillCombo(null); }).catch(e => { $('rule-list').innerHTML = IO.errorBox(e); });
+  $('preview').onclick = e => IO.busy(e.currentTarget, preview);
+  reload().then(() => fill(null)).catch(e => { $('rule-list').innerHTML = IO.errorBox(e); });
 })();
 </script>
 {% endblock %}

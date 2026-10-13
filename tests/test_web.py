@@ -79,21 +79,25 @@ def test_pivot_scores_api(client):
 
 
 def test_rule_lifecycle(client):
-    rule = {"name": "favicon", "platform": "urlscan", "query": "hash:" + "a" * 64, "fidelity": "high", "confidence": "low"}
+    rule = {"name": "same IP", "platform": "urlscan", "confidence": 60, "fidelity": 60,
+            "conditions": [{"attribute": "ip", "method": "exact"}]}
     r = client.post("/api/rules", json={**rule, "name": ""}, headers=H)
     assert r.status_code == 400 and "name" in r.get_json()["error"]
+    # preview: the form's search shape, then filled per confirmed host of a case (nothing searched)
+    p = client.post("/api/rules/preview", json={"rule": {**rule, "name": "", "confidence": ""}}, headers=H).get_json()
+    assert p["template"] == 'page.ip:"<ip>"' and p["suggest"]["confidence"] == 60
+    p = client.post("/api/rules/preview", json={"rule": rule, "case": CASE}, headers=H).get_json()
+    assert {"matched", "missing", "hosts"} <= set(p)
     created = client.post("/api/rules", json=rule, headers=H).get_json()
-    item = client.get("/api/rules").get_json()["items"][0]
-    assert item["id"] == created["id"] and item["url"] == "https://urlscan.io/search/#hash%3A" + "a" * 64
-    assert client.post(f"/api/rules/{created['id']}", json={**rule, "fidelity": "low"}, headers=H).get_json()["fidelity"] == "low"
-    assert client.post(f"/api/rules/{created['id']}/delete", headers=H).get_json() == {"ok": True}
-    # pivot combinations and built-in pivot tuning
-    combo = client.post("/api/combos", json={"name": "kit", "pivots": ["favicon", "title"], "confidence": 80}, headers=H)
-    assert combo.status_code == 201
     d = client.get("/api/rules").get_json()
-    assert d["combos"][0]["name"] == "kit" and {p["key"] for p in d["pivots"]} >= {"title", "favicon", "html"}
-    assert client.post("/api/pivots/title", json={"confidence": 10, "search": False}, headers=H).get_json()["points"] == 0
-    assert client.post("/api/pivots/title", json={"confidence": 40}, headers=H).get_json()["tuned"] is False
-    assert client.post("/api/pivots/nope", json={"confidence": 1}, headers=H).status_code == 404
-    assert client.post(f"/api/combos/{combo.get_json()['id']}/delete", headers=H).get_json() == {"ok": True}
+    assert d["items"][0]["id"] == created["id"] and d["items"][0]["template"] == 'page.ip:"<ip>"'
+    assert {"title", "favicon", "regex", "pattern"} <= {x["key"] for x in d["pivots"]}
+    assert client.post(f"/api/rules/{created['id']}", json={**rule, "fidelity": 20}, headers=H).get_json()["fidelity"] == 20
+    assert client.post(f"/api/rules/{created['id']}/delete", headers=H).get_json() == {"ok": True}
+    # built-in pivot tuning
+    t = client.post("/api/pivots/title", json={"confidence": 10, "enabled": False}, headers=H).get_json()
+    assert t["points"] == 0 and t["current"]["enabled"] is False
+    assert client.post("/api/pivots/title", json={}, headers=H).get_json()["tuned"] == []
+    assert client.post("/api/pivots/title", json={"template": "nope"}, headers=H).status_code == 400
+    assert client.post("/api/pivots/nope", json={}, headers=H).status_code == 404
     assert client.post("/api/rules/nope/delete", headers=H).status_code == 404

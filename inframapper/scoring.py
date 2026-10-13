@@ -36,7 +36,7 @@ Method
    pivot confidences (defaults: HTML body / script / cert / SOA 0.85, url path / imphash 0.65,
    title / favicon / JARM / NS 0.40; tunable on the hunting-rules page); shared hosting, CDNs,
    commodity NS and noisy hubs pass almost nothing (0.15). One source group alone is capped at 80.
-   A matched combination rule (cluster.py) lifts the host to that rule's confidence.
+   A search run by an analyst hunting rule passes the rule's own confidence.
 
 3. Fidelity = 100 x (0.30 specificity + 0.25 confidence + 0.20 context + 0.15 threat signal
    + 0.10 freshness) x false-positive risk x relevance gate. The gate (0.4 + 0.6 x confidence /
@@ -54,7 +54,7 @@ import time
 from datetime import datetime, timezone
 
 from . import graph as g
-from .cluster import HOSTS, PIVOTS, pivot_confidence
+from .cluster import HOSTS, PIVOTS, pivot_confidence, pivot_fidelity
 
 METHOD = {
     "name": "heuristic-v1",
@@ -328,12 +328,6 @@ class Scorer:
                 factors.append({"kind": "limit", "label": f"single source group ({next(iter(groups))}): capped at 80"})
             if not supports and u not in start:
                 limited.append("no path to the seed")
-            rm = nodes[u]["props"].get("rule_match")
-            if rm and u not in start and rm["confidence"] / 100 > c:   # an analyst combination rule says so
-                c = rm["confidence"] / 100
-                factors.append({"kind": "support", "label": f"hunting rule “{rm['name']}” matched: "
-                                                            f"confidence set to {rm['confidence']}",
-                                "value": rm["confidence"]})
             p = nodes[u]["props"]
             if p.get("warninglist") and u != seed:
                 c *= .5
@@ -383,6 +377,9 @@ class Scorer:
         spec, spec_why = SPECIFICITY.get(t, .3), f"{t} indicators are " + {
             1.0: "unique", .85: "highly specific", .8: "specific", .75: "fairly specific", .6: "moderately specific"
         }.get(SPECIFICITY.get(t, .3), "weakly specific")
+        pf = pivot_fidelity(n)   # pivots / artefacts: the fidelity set on the hunting-rules page
+        if pf is not None and pf / 100 != spec:
+            spec, spec_why = pf / 100, f"pivot fidelity {pf} (hunting rules)"
         if t == g.IP and p.get("hosting"):
             spec, spec_why = .45, "IP in a rented / VPN range"
         if t == g.CERT and p.get("shared_cert"):

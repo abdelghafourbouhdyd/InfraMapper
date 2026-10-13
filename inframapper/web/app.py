@@ -211,7 +211,7 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         ks = keys.status()
         return jsonify(cases=len(cs), recent=cs[:12], priorities=pri, kb_cases=rt.kb.cases(), verdicts=verdicts,
                        n_verdicts=n_verdicts, reports=rt.kb.report_stats(), jobs=jobs.list(8), active=jobs.active(),
-                       sources=rt.sources(), rules=len(rules.list()),
+                       sources=rt.sources(), rules=sum(1 for r in rules.list() if r.get("enabled", True)),
                        key_health=[{"id": p["id"], "name": p["name"], "status": ks[p["id"]]["status"],
                                     "message": ks[p["id"]]["message"]} for p in PROVIDERS])
 
@@ -568,12 +568,11 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
     # ── hunting rules ───────────────────────────────────────────────────────
     @bp.get("/api/rules")
     def api_rules():
-        items = [{**r, "url": rule_svc.query_link(r["platform"], r["query"])
-                  if r.get("platform") in rule_svc.PLATFORMS and r.get("query") else None} for r in rules.list()]
-        return jsonify(items=items, combos=rules.list("combos"), pivots=rules.pivots(), schema=rule_svc.schema())
+        return jsonify(items=rules.list(), pivots=rules.pivots(), schema=rule_svc.schema(),
+                       cases=[{"name": c["name"], "seed": c["seed"]} for c in case_svc.list_cases(out)])
 
     def _rule_write(fn, *a, created=False):
-        """Run a store change; combinations and pivot tuning go to the engine right away."""
+        """Run a store change; the engine picks it up right away (graph sessions in this process)."""
         try:
             res = fn(*a)
         except LookupError as exc:
@@ -583,17 +582,46 @@ def create_app(root: Path, out: Path, preload: bool = False) -> Flask:
         rules.apply()
         return jsonify(res if res is not None else {"ok": True}), 201 if created else 200
 
-    @bp.post("/api/<any(rules, combos):section>")
-    def api_rule_create(section):
-        return _rule_write(rules.create, request.get_json(silent=True) or {}, section, created=True)
+    @bp.post("/api/rules")
+    def api_rule_create():
+        return _rule_write(rules.create, request.get_json(silent=True) or {}, created=True)
 
-    @bp.post("/api/<any(rules, combos):section>/<rid>")
-    def api_rule_update(section, rid):
-        return _rule_write(rules.update, rid, request.get_json(silent=True) or {}, section)
+    @bp.post("/api/rules/preview")
+    def api_rule_preview():
+        """What a (possibly unsaved) rule would search for each host of a case, filled with that
+        host's values. Nothing is searched."""
+        body = request.get_json(silent=True) or {}
+        raw = body.get("rule") or {}
+        raw = {**raw, "name": raw.get("name") or "preview",   # a half-filled form still previews
+               **{k: raw[k] if raw.get(k) not in (None, "") else 0 for k in ("confidence", "fidelity")}}
+        try:
+            rule = rule_svc.validate(raw)
+        except ValueError as exc:
+            return jsonify(error=str(exc)), 400
+        base = {"template": rule_svc.template(rule), "suggest": rule_svc.suggest(rule["conditions"])}
+        if not body.get("case"):
+            return jsonify(base)
+        d = _case(body["case"])
+        gr = analysis.load(d, rt.servers.get(d.name))
+        nodes, edges = gr["nodes"], list(gr["edges"])
+        hosts = [nid for nid, n in nodes.items() if n["type"] in ("Domain", "IP", "URL", "File")
+                 and (nid == gr["seed"] or n["props"].get("cluster") is True)]
+        rows, missing = [], 0
+        for nid in hosts:
+            qs = rule_svc.render(rule, rule_svc.host_attributes(nodes, edges, nid))
+            if qs:
+                rows.append({"type": nodes[nid]["type"], "value": nodes[nid]["value"], "queries": qs})
+            else:
+                missing += 1
+        return jsonify(**base, hosts=rows[:50], matched=len(rows), missing=missing)
 
-    @bp.post("/api/<any(rules, combos):section>/<rid>/delete")
-    def api_rule_delete(section, rid):
-        return _rule_write(rules.delete, rid, section)
+    @bp.post("/api/rules/<rid>")
+    def api_rule_update(rid):
+        return _rule_write(rules.update, rid, request.get_json(silent=True) or {})
+
+    @bp.post("/api/rules/<rid>/delete")
+    def api_rule_delete(rid):
+        return _rule_write(rules.delete, rid)
 
     @bp.post("/api/pivots/<key>")
     def api_pivot_tune(key):

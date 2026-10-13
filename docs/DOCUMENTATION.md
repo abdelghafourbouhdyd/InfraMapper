@@ -458,65 +458,88 @@ Mnemonic's free quota is small; a `MNEMONIC_API_KEY` or CIRCL account makes this
 
 ## 11. Hunting rules: your own hunting logic
 
-Web UI → **Hunting rules**. A rule is a saved piece of pivoting logic: a query you run on a platform to
-find more of an actor's infrastructure. The same page holds pivot combinations and the tuning of the
-built-in pivots (below). Everything is stored in `cases/hunt_rules.json`.
+Web UI → **Hunting rules**. Two things live there, both stored in `cases/hunt_rules.json`:
 
-| Field | What it holds |
-|---|---|
-| Rule name | what the pivot is, e.g. *Phishing kit page title* |
-| Platform | where the query runs: **urlscan.io** or **VirusTotal Intelligence** |
-| Query | the query or identifier on that platform: a page title, favicon hash, JARM, imphash… |
-| Fidelity | low / medium / high: how precisely the query singles out the target's infrastructure |
-| Confidence | low / medium / high: how sure you are of what it returns |
+1. **Built-in pivots**: the pivots every investigation runs, which you can switch off and tune.
+2. **Your own pivot logic**: new pivots built from *attributes* of each host, never from fixed values.
 
-Each saved rule can be edited, deleted, its query copied, or opened on its platform in one click.
-
-Examples:
-
-| Rule name | Platform | Query | Fidelity | Confidence |
-|---|---|---|---|---|
-| Kit page title | urlscan | `page.title:"Sign in to your account"` | medium | medium |
-| Favicon reuse | urlscan | `hash:<favicon sha256>` | high | medium |
-| C2 TLS fingerprint | VT | `entity:domain jarm:<jarm>` | low | low |
-
-### Pivot combinations
-
-A combination says how much several pivots are worth **together**: e.g. *favicon + page title →
-confidence 80*. When a discovered host shares **every** pivot of the combination with the **same**
-confirmed host, the combination replaces the sum of those pivots:
-
-- **Cluster**: the confidence becomes evidence points (85+ → 3, 60+ → 2, 30+ → 1, below 30 → 0;
-  2 points join the cluster). A low confidence can therefore also *stop* a combination that would
-  otherwise confirm a host (favicon 1 + title 1 = 2 by default).
-- **Scores**: the host's confidence is raised to the combination's confidence
-  ([section 14](#14-fidelity-and-confidence-scores)), with the rule named in its factors.
-
-If several combinations match, the one with the most pivots wins, then the highest confidence.
-A host sharing only part of a combination is scored pivot by pivot, as usual.
+Changes apply to new investigations and new pivots; existing cases change when they are re-clustered
+(next pivot or re-run).
 
 ### Built-in pivots
 
-The pivots every investigation runs can be tuned on the same page:
+| Pivot | What it does | Confidence | Fidelity | Parameters |
+|---|---|---|---|---|
+| Page title | urlscan search for the page title of each scan | 40 | 30 | template `page.title:"{value}"`, max hits, auto-refine |
+| Favicon hash | urlscan search for the favicon's SHA-256 | 40 | 50 | template `hash:{value}`, max hits, auto-refine |
+| HTML body hash | urlscan search for the main HTML document | 85 | 85 | template, max hits, auto-refine |
+| First-party script hash | urlscan search for the site's own scripts | 85 | 80 | template, max hits, auto-refine |
+| URL path | urlscan search for the distinctive part of the path | 65 | 30 | max hits, auto-refine |
+| Domain-name patterns | look-alike searches from each name (other TLDs, skeleton, token combos…) | 40 | 30 | max hits |
+| Regex hunt | regex ladder on the cluster's names | 40 | 30 | steps |
+| JARM / imphash / vhash | VT Intelligence searches (premium key, `--vt-intel`) | 40 / 65 / 65 | 35 / 30 / 30 | template |
+| TLS certificate, SOA contact, name server, mail server | shared infrastructure (no search of their own) | 85 / 85 / 40 / 40 | 80 / 80 / 40 / 40 | — |
+| Analyst query | your `-q` queries and graph-page searches (always run) | 65 | 30 | — |
 
-| Pivot | Default confidence | Points | Search can be switched off |
+- **On / off**: off skips the search. Artefacts already found still count as evidence.
+- **Confidence**: what sharing one such artefact with a confirmed host is worth: in the cluster
+  (85+ → 3 points, 60+ → 2, 30+ → 1, below 30 → ignored; 2 points join the cluster) and in the scores
+  (how much confidence passes through the artefact, [section 14](#14-fidelity-and-confidence-scores)).
+- **Fidelity**: how specific the artefact is (the specificity term of its fidelity score).
+- **Search template**: the search run for each artefact found; `{value}` is the value found on the
+  host (titles are quote-escaped), e.g. `page.title:"{value}" AND date:>now-90d` to only look at recent
+  scans.
+- **Max hits**: above this many hits the search is too broad to expand (default: the run's `--broad`).
+- **Auto-refine**: when too broad, tighten the search with conditions from the scan it came from.
+- **Regex steps**: searches spent tightening the automatic regex hunt.
+- **Reset to defaults** in the edit dialog undoes all of it.
+
+### Your own pivot logic
+
+A custom rule says *which attributes of a host to search for together*, and the engine fills in each
+host's own values when it expands it. So "page title + favicon hash" on urlscan becomes, for a host
+whose title is `Sign in` and favicon `ab12…`: `page.title:"Sign in" AND hash:ab12…`, and for the next
+host its own title and favicon. A host that lacks one of the attributes is skipped by the rule.
+
+| Field | What it holds |
+|---|---|
+| Rule name | e.g. *Kit reuse: same title and favicon* |
+| Platform | **urlscan.io**, or **VirusTotal Intelligence** (premium key, runs with `--vt-intel`) |
+| Conditions | 1–6 attributes, all must hold (AND), each with a match method (below) |
+| Only last N days | urlscan only: adds `date:>now-Nd` |
+| Max hits to expand | urlscan only: above this the search is too broad (default: the run's `--broad`) |
+| Confidence, fidelity | 0–100: how much what the rule finds is worth, like a built-in pivot. **Suggest** combines the attributes' own values |
+| Enabled | a disabled rule is kept but not run |
+
+| Attribute | Platform | Taken from | Match methods |
 |---|---|---|---|
-| HTML body hash, first-party script hash | 85 | 3 | yes |
-| TLS certificate, SOA contact email | 85 | 3 | no |
-| URL path, imphash, vhash | 65 | 2 | yes |
-| Analyst query | 65 | 2 | no |
-| Favicon hash, page title, JARM | 40 | 1 | yes |
-| Name server, mail server | 40 | 1 | no |
-| Domain-name pattern / other search | 40 | 1 | yes (automatic domain-pattern searches only) |
+| Page title | urlscan | the host's scans (generic titles skipped) | same title |
+| Favicon / HTML body / first-party script hash | urlscan | resources in the host's scans | same hash |
+| Domain name | urlscan | the host itself | same registered domain; name contains the host's name; **matches a regex** |
+| IP address | urlscan | the host, or the IPs a domain resolves to | same IP |
+| ASN | urlscan | ASN of those IPs | same ASN |
+| Web server banner | urlscan | Server header of the host's scans | same banner |
+| JARM | VT | TLS fingerprint | same JARM |
+| Imphash / vhash | VT | the file | same imphash / vhash |
 
-- **Confidence** sets what sharing one such artefact with a confirmed host is worth, in the cluster
-  (points as above) and in the scores (how much confidence passes through the artefact).
-- **Search** off skips that urlscan / VT Intelligence lookup. Artefacts already found still count as
-  evidence. Analyst queries and regex hunts always run.
-- **Reset** puts a pivot back to its default.
+**Regex on the domain name**: the regex can use the host's own name: `{name}` is its name without
+the TLD, `{tld}` its TLD. E.g. for `login-acme.top`, `secure-{name}[0-9]*` searches
+`page.domain:/secure-login\-acme[0-9]*/`.
 
-Combinations and tuning are stored in `cases/hunt_rules.json` and apply to new investigations and
-pivots; existing cases change when they are re-clustered (next pivot or re-run).
+A host with several values (two titles…) gives several searches, at most 3 per rule. The same search
+is never run twice in a case. Hits hang off a pivot node named after the rule and are scored with the
+rule's confidence and fidelity.
+
+**Preview on case** shows, for every confirmed host of a case, the exact searches the rule would run.
+Nothing is searched, so it costs no API quota.
+
+Example:
+
+| Rule | Conditions | Search for one host |
+|---|---|---|
+| Kit reuse | page title (same title) + favicon hash (same hash), last 90 days | `page.title:"Sign in" AND hash:ab12… AND date:>now-90d` |
+| Sibling names | domain name matches regex `{name}-[a-z]+` | `page.domain:/login\-acme-[a-z]+/` |
+| Same server stack | IP address + web server banner | `page.ip:"198.51.100.7" AND page.server:"nginx"` |
 
 ---
 
@@ -707,7 +730,7 @@ Same engine and same `cases/` folder as the CLI.
 | Cases | every case; per case: report, IOC table (filter, copy, CSV), pivot results, threat reports, live pivot graph, Suricata / IOC lists, exports |
 | Knowledge base | analyst verdicts; rebuild from cases |
 | Threat reports | search the dataset; start an ingestion |
-| Hunting rules | saved pivoting logic (platform, query, fidelity, confidence), pivot combinations with their own confidence, tuning of the built-in pivots ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
+| Hunting rules | tune the built-in pivots (on/off, confidence, fidelity, search template, max hits…) and build your own pivot logic from host attributes, with a preview per case ([section 11](#11-hunting-rules-your-own-hunting-logic)) |
 | API keys & settings | add, test, remove keys per provider; status valid / invalid / quota exhausted / keyless / untested |
 
 ![Dashboard](screenshots/dashboard.png)

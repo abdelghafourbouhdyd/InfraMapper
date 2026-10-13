@@ -18,6 +18,7 @@ from .clients import URLScan, VirusTotal
 from .feeds import Feeds
 from . import nrd
 from . import regex_hunt as rh
+from . import rules as hunt_rules
 from .intel import PriorReporting, Warninglists, _ts, timing
 from .pdns import PassiveDNS, is_commodity, soa_parts, window
 from .log import log
@@ -192,7 +193,7 @@ class Investigator:
             self.recluster()
         if self.check_reporting():
             self.recluster()
-        if self.us and self.cfg.regex_hunt and self.regex_hunt():
+        if self.us and self.cfg.regex_hunt and cluster.setting("regex", "enabled") and self.regex_hunt():
             self.recluster()
         if self.cfg.new_hunt and self.hunt_new_domains():
             self.recluster()
@@ -294,6 +295,32 @@ class Investigator:
             self._vt_url(value, depth)
         elif ntype == g.CERT:   # only from the graph page: certs aren't queued by the crawl
             self._cert(value, depth)
+        if ntype in cluster.HOSTS:
+            self._rule_pivots(g.node_id(ntype, value), depth)
+
+    def _rule_pivots(self, nid: str, depth: int) -> None:
+        """The analyst's own pivot logic (hunting rules): every enabled rule whose attributes this
+        host has runs its search, filled with the host's own values (title, favicon…)."""
+        todo = cluster.custom_rules()
+        if not todo:
+            return
+        attrs = hunt_rules.host_attributes(self.g.nodes, self.g.edges, nid)
+        for r in todo:
+            vt = r["platform"] == "vt"
+            if vt and not (self.vt and self.cfg.vt_intel) or not vt and not self.us:
+                continue
+            kind = f"rule:{r['id']}"
+            for q in hunt_rules.render(r, attrs):
+                pid = self.g.add_node(g.INTEL if vt else g.PATTERN, q, kind=kind, rule=r["name"],
+                                      confidence=r["confidence"], fidelity=r["fidelity"])
+                self.g.add_edge(nid, pid, "MATCHES_PATTERN")
+                if any(p["query"] == q for p in self.pivots):   # same values as an earlier host
+                    continue
+                log.info(escape(f"  rule “{r['name']}”: {q[:90]}"))
+                if vt:
+                    self._vt_intel_pivot(pid, q, kind)
+                else:
+                    self._urlscan_pivot(pid, q, kind, depth + 1)
 
     def known_domains(self) -> list[str]:
         """Domains the case says are the actor's: the seed's host and every confirmed domain."""
@@ -343,11 +370,12 @@ class Investigator:
                   "sample": sample(res), "decision": "start"}]
         log.info(escape(f"  regex [broad] {q} -> {total}"))
         best, tried, searches = 0, {q}, 1
-        while 0 < total and total > self.cfg.broad and searches < self.cfg.regex_steps:
+        max_steps = (cluster.setting("regex", "steps") if kind == "domain pattern (regex)" else None) or self.cfg.regex_steps
+        while 0 < total and total > self.cfg.broad and searches < max_steps:
             moved = False
             for label, why, nxt in rh.refinements(step, known, res, capped=total >= US_CAP):
                 nq = nxt.query()
-                if nq in tried or searches >= self.cfg.regex_steps:
+                if nq in tried or searches >= max_steps:
                     continue
                 tried.add(nq)
                 searches += 1
@@ -1070,7 +1098,7 @@ class Investigator:
             jid = self.g.add_node(g.JARM, jarm)
             self.g.add_edge(src, jid, "HAS_JARM", seen_by=["VirusTotal"])
             if self.cfg.vt_intel:
-                self._vt_intel_pivot(jid, f"entity:domain jarm:{jarm}", "jarm")
+                self._vt_intel_pivot(jid, cluster.query("jarm", jarm), "jarm")
             self.hunt_queries.append({"platform": "Shodan", "query": f"ssl.jarm:{jarm}"})
 
     def _vt_intel_pivot(self, pivot_id: str, query: str, kind: str) -> None:
@@ -1115,11 +1143,11 @@ class Investigator:
             if pe.get("imphash"):
                 pid = self.g.add_node(g.INTEL, f"imphash:{pe['imphash']}", kind="imphash")
                 self.g.add_edge(src, pid, "HAS_IMPHASH")
-                self._vt_intel_pivot(pid, f"imphash:{pe['imphash']}", "imphash")
+                self._vt_intel_pivot(pid, cluster.query("imphash", pe["imphash"]), "imphash")
             if a.get("vhash"):
                 pid = self.g.add_node(g.INTEL, f"vhash:{a['vhash']}", kind="vhash")
                 self.g.add_edge(src, pid, "HAS_VHASH")
-                self._vt_intel_pivot(pid, f'vhash:"{a["vhash"]}"', "vhash")
+                self._vt_intel_pivot(pid, cluster.query("vhash", a["vhash"]), "vhash")
         for k, q in (("imphash", f"imphash:{pe.get('imphash')}"),
                      ("vhash", f'vhash:"{a.get("vhash")}"')):
             if (pe if k == "imphash" else a).get(k):
@@ -1246,7 +1274,8 @@ class Investigator:
                           status=page.get("status") or (None if page.get("ip") else "no response"),
                           server=page.get("server"),
                           cert=_cert_label(page.get("tlsIssuer"), page.get("tlsValidFrom")))
-        self.g.set_prop(src, urlscan_scans=total)
+        servers = list(dict.fromkeys(r["page"]["server"] for r in history if (r.get("page") or {}).get("server")))
+        self.g.set_prop(src, urlscan_scans=total, servers=servers[:3] or None)
         self.pivots.append({"source": "urlscan", "kind": "host scans", "query": q,
                             "total": total, "broad": False})
 
@@ -1312,7 +1341,7 @@ class Investigator:
             tid = self.g.add_node(g.TITLE, title)
             self.g.add_edge(src, tid, "HAS_TITLE")
             safe = title.replace("\\", "\\\\").replace('"', '\\"')
-            self._urlscan_pivot(tid, f'page.title:"{safe}"', "title", depth + 1, ctx=page)
+            self._urlscan_pivot(tid, cluster.query("title", safe), "title", depth + 1, ctx=page)
 
     def _us_full_result(self, src: str, uuid: str, depth: int) -> None:
         res = self.us.result(uuid)
@@ -1344,17 +1373,17 @@ class Investigator:
                 fid = self.g.add_node(g.FAVICON, sha, url=url, mime=mime)
                 self.g.add_edge(src, fid, "HAS_FAVICON")
                 self._favicon_hashes(fid, sha)
-                self._urlscan_pivot(fid, f"hash:{sha}", "favicon", depth + 1, ctx=page)
+                self._urlscan_pivot(fid, cluster.query("favicon", sha), "favicon", depth + 1, ctx=page)
             elif rtype == "Document" and rhost == page_host and resp.get("size", 1) > 0:
                 hid = self.g.add_node(g.HTML_HASH, sha, url=url, size=resp.get("size"))
                 self.g.add_edge(src, hid, "SERVES_HTML")
-                self._urlscan_pivot(hid, f"hash:{sha}", "html body", depth + 1, ctx=page)
+                self._urlscan_pivot(hid, cluster.query("html", sha), "html body", depth + 1, ctx=page)
             elif (rtype == "Script" and scripts < 3 and page_host
                   and apex_of(rhost) == apex_of(page_host)):
                 scripts += 1
                 jid = self.g.add_node(g.SCRIPT, sha, url=url)
                 self.g.add_edge(src, jid, "SERVES_SCRIPT")
-                self._urlscan_pivot(jid, f"hash:{sha}", "first-party script", depth + 1, ctx=page)
+                self._urlscan_pivot(jid, cluster.query("script", sha), "first-party script", depth + 1, ctx=page)
 
         for c in (res.get("lists", {}).get("certificates") or [])[:3]:
             if c.get("subjectName") and apex_of(c["subjectName"].lstrip("*.")) == apex_of(page_host):
@@ -1490,8 +1519,9 @@ class Investigator:
         pivot on the first version specific enough to expand (see _refine)."""
         if any(p["query"] == query for p in self.pivots) or not cluster.search_enabled(kind):
             return
+        broad_at = cluster.max_hits(kind, self.cfg.broad)   # tunable per pivot / rule (hunting rules)
         total, results = self.us.search(query, 100)
-        if total > self.cfg.broad and ctx is not None and self.cfg.refine:
+        if total > broad_at and ctx is not None and self.cfg.refine and cluster.refine_enabled(kind):
             self.pivots.append({"source": "urlscan", "kind": kind, "query": query, "total": total,
                                 "broad": True, "decision": "too broad: refining", "refined_from": refined_from})
             self.g.set_prop(pivot_id, urlscan_query=query, urlscan_hits=total, broad=True)
@@ -1512,8 +1542,8 @@ class Investigator:
         is_pattern = kind.startswith(("domain pattern", "url path", "custom"))
         # Patterns naturally match many scans of few campaign hosts: attach the sample hits
         # up to a higher threshold, but only *expand* them when under the normal one.
-        attach = total <= (self.cfg.broad_pattern if is_pattern else self.cfg.broad)
-        expand = total <= self.cfg.broad
+        attach = total <= (max(self.cfg.broad_pattern, broad_at) if is_pattern else broad_at)
+        expand = total <= broad_at
         broad = not attach
         self.pivots.append({"source": "urlscan", "kind": kind, "query": query, "total": total, "broad": broad,
                             "refined_from": refined_from, "decision": decision})
