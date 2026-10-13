@@ -17,11 +17,7 @@ the pages built from the same kit. InfraMapper follows those links and maps them
   GreyNoise, AbuseIPDB, Shodan InternetDB, VT comments / YARA / sandboxes.
 - Attribution overlap across sources, with aliases merged (MISP galaxy, Malpedia) and timing checks.
 - Report triage (`--from`): extracts IOCs from a PDF, web page or text and triages them.
-- Regex and newly-registered-domain hunts.
-- Your own hunting rules in the web UI: conditions, relations and urlscan / VT query templates, with Test (why it matched) and Run ([docs](docs/DOCUMENTATION.md#11-hunting-rules-your-own-hunting-logic)).
-- Local knowledge base: links new cases to earlier ones and keeps analyst verdicts.
-- Web UI and CLI.
-- Exports: STIX 2.1, CSV, Suricata rules, IOC lists, KQL/SPL queries, Markdown report.
+
 
 ## Install
 
